@@ -353,6 +353,7 @@ def finish_timing(arguments, started, records, backend, device):
     tokens = sum(record["output_tokens"] for record in records)
     arguments.generation_stats = {
         "backend": backend, "device": device, "elapsed_seconds": elapsed,
+        "engine_startup_seconds": getattr(arguments, "startup_seconds", None),
         "responses": len(records), "output_tokens": tokens,
         "tokens_per_second": tokens / elapsed if elapsed else None,
         "seconds_per_response": elapsed / len(records) if records else None,
@@ -368,6 +369,8 @@ def generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
     started = time.perf_counter()
     # The engine has to hold the largest budget any benchmark in this run uses.
     model, lora = load_engine(arguments, longest_generation)
+    arguments.startup_seconds = time.perf_counter() - started
+    print(f"vLLM engine startup seconds: {arguments.startup_seconds:.3f}", flush=True)
 
     records = []
     with (out / RECORDS).open("w") as stream:
