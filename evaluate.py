@@ -472,18 +472,20 @@ def generate_vllm_data_parallel(jobs, arguments, out, longest_generation):
     finally:
         for worker in workers:
             worker.join(timeout=2)
+            # The controller process may have exited while its vLLM engine
+            # descendants are still alive: clean its group even in that case.
+            try:
+                os.killpg(worker.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                if worker.is_alive():
+                    worker.terminate()
+            worker.join(timeout=5)
             if worker.is_alive():
                 try:
-                    os.killpg(worker.pid, signal.SIGTERM)
+                    os.killpg(worker.pid, signal.SIGKILL)
                 except ProcessLookupError:
-                    worker.terminate()
+                    worker.kill()
                 worker.join(timeout=5)
-                if worker.is_alive():
-                    try:
-                        os.killpg(worker.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        worker.kill()
-                    worker.join(timeout=5)
         signal.signal(signal.SIGTERM, previous_handler)
 
 
