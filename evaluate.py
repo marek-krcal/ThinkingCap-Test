@@ -43,6 +43,7 @@ from collections import Counter
 import json
 import os
 from pathlib import Path
+import time
 
 from utils.eval import sandbox
 from utils.eval.benchmarks import paths, sha256
@@ -83,6 +84,15 @@ def main():
     suite = load_suite(root, arguments.smoke)
     listing = "smoke" if arguments.smoke else "questions"
     questions = select(read_jsonl(paths(root)[listing]), arguments.benchmarks)
+    if arguments.limit_per_dataset:
+        questions = limit_questions_per_dataset(questions, arguments.limit_per_dataset)
+        suite["total"] = len(questions)
+        suite["selection"] += f"-limit{arguments.limit_per_dataset}"
+    if arguments.limit_per_benchmark:
+        questions = limit_questions_per_benchmark(
+            questions, arguments.benchmarks, arguments.limit_per_benchmark)
+        suite["total"] = len(questions)
+        suite["selection"] += f"-benchmark-limit{arguments.limit_per_benchmark}"
     prepare_output(out, arguments.regrade)
 
     # records are the answers: one generation per question per sample, graded.
@@ -134,12 +144,29 @@ def parse_arguments():
                              "Changing it changes what the model generates, so runs with "
                              "different caps are not comparable")
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--backend", choices=("auto", "vllm", "transformers"), default="auto",
+                        help="Generation engine. auto uses vLLM on CUDA and Transformers otherwise")
+    parser.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"), default="auto",
+                        help="Device for the Transformers backend")
+    parser.add_argument("--dtype", choices=("auto", "half", "bfloat16", "float"), default="auto",
+                        help="Weight dtype. auto selects a dtype supported by the device")
+    parser.add_argument("--limit-per-dataset", type=int,
+                        help="Development only: keep the first N questions from each dataset")
+    parser.add_argument("--limit-per-benchmark", type=int,
+                        help="Development only: keep N questions from each requested benchmark, "
+                             "balanced across its component datasets")
     parser.add_argument("--sandbox", choices=sandbox.MODES, help="Default: bwrap if available")
     parser.add_argument("--workers", type=int, default=min(8, os.cpu_count() or 1),
                         help="Parallel MBPP+ grading processes")
     parser.add_argument("--regrade", action="store_true",
                         help=f"Re-grade a finished run's {RECORDS} without generating again")
     arguments = parser.parse_args()
+    if arguments.limit_per_dataset is not None and arguments.limit_per_dataset < 1:
+        parser.error("--limit-per-dataset must be positive")
+    if arguments.limit_per_benchmark is not None and arguments.limit_per_benchmark < 1:
+        parser.error("--limit-per-benchmark must be positive")
+    if arguments.limit_per_dataset is not None and arguments.limit_per_benchmark is not None:
+        parser.error("Choose only one of --limit-per-dataset and --limit-per-benchmark")
     # Pin the base model unless the user named their own: a default run should
     # be reproducible without anyone having to know the commit. Their weights
     # get no revision, because a local path has none.
@@ -197,6 +224,39 @@ def select(questions, benchmarks):
     if not chosen:
         raise SystemExit(f"No questions for {benchmarks} in this cohort")
     return chosen
+
+
+def limit_questions_per_dataset(questions, limit):
+    """Keep a deterministic prefix of every selected dataset for timing smoke tests."""
+    counts, chosen = Counter(), []
+    for question in questions:
+        dataset = question["dataset"]
+        if counts[dataset] < limit:
+            chosen.append(question)
+            counts[dataset] += 1
+    return chosen
+
+
+def limit_questions_per_benchmark(questions, benchmarks, limit):
+    """Keep a deterministic, balanced prefix for each requested benchmark."""
+    selected = []
+    for benchmark in benchmarks:
+        datasets = BENCHMARKS[benchmark]
+        pools = {dataset: [q for q in questions if q["dataset"] == dataset]
+                 for dataset in datasets}
+        positions = Counter()
+        while sum(positions.values()) < limit:
+            added = False
+            for dataset in datasets:
+                if sum(positions.values()) >= limit:
+                    break
+                if positions[dataset] < len(pools[dataset]):
+                    selected.append(pools[dataset][positions[dataset]])
+                    positions[dataset] += 1
+                    added = True
+            if not added:
+                break
+    return selected
 
 
 def grading_context(suite, arguments):
@@ -259,9 +319,8 @@ def load_checkers(suite, wanted):
 
 
 def generate(questions, arguments, out):
-    """Generate every question `--samples` times and stream the rollouts to disk."""
+    """Generate every question `--samples` times with the selected backend."""
     from transformers import AutoTokenizer
-    from vllm import SamplingParams
 
     tokenizer = AutoTokenizer.from_pretrained(arguments.model, revision=arguments.revision)
     eos = tokenizer.eos_token_id
@@ -274,8 +333,41 @@ def generate(questions, arguments, out):
     if longest > PROMPT_BUDGET:
         raise SystemExit(f"A question is {longest} tokens, over the {PROMPT_BUDGET}-token "
                          "prompt budget; it would be truncated and score as a failure")
+    backend = resolve_backend(arguments)
+    if backend == "transformers":
+        return generate_transformers(jobs, arguments, out, tokenizer,
+                                     eos_ids, open_id, close_id)
+    return generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
+                         max(caps_in_use(questions, arguments).values()))
+
+
+def resolve_backend(arguments):
+    if arguments.backend != "auto":
+        return arguments.backend
+    import torch
+    return "vllm" if torch.cuda.is_available() else "transformers"
+
+
+def finish_timing(arguments, started, records, backend, device):
+    elapsed = time.perf_counter() - started
+    tokens = sum(record["output_tokens"] for record in records)
+    arguments.generation_stats = {
+        "backend": backend, "device": device, "elapsed_seconds": elapsed,
+        "responses": len(records), "output_tokens": tokens,
+        "tokens_per_second": tokens / elapsed if elapsed else None,
+        "seconds_per_response": elapsed / len(records) if records else None,
+    }
+    print("Generation timing: " + json.dumps(arguments.generation_stats), flush=True)
+
+
+def generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
+                  longest_generation):
+    """Generate through the fast CUDA-only vLLM engine."""
+    from vllm import SamplingParams
+
+    started = time.perf_counter()
     # The engine has to hold the largest budget any benchmark in this run uses.
-    model, lora = load_engine(arguments, max(caps_in_use(questions, arguments).values()))
+    model, lora = load_engine(arguments, longest_generation)
 
     records = []
     with (out / RECORDS).open("w") as stream:
@@ -294,6 +386,59 @@ def generate(questions, arguments, out):
                 stream.write(json.dumps(record) + "\n")
             stream.flush()  # a crash late in a long run keeps what it earned
             print(f"{start + len(batch)}/{len(jobs)}", flush=True)
+    finish_timing(arguments, started, records, "vllm", "cuda")
+    return records
+
+
+def generate_transformers(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id):
+    """Portable one-response-at-a-time generation for CPU and Apple Silicon."""
+    import torch
+    from transformers import AutoModelForCausalLM
+
+    device = arguments.device
+    if device == "auto":
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
+    dtype_name = arguments.dtype
+    if dtype_name == "auto":
+        if device == "cuda":
+            dtype_name = "bfloat16" if torch.cuda.get_device_capability()[0] >= 8 else "half"
+        else:
+            dtype_name = "float"
+    dtype = {"half": torch.float16, "bfloat16": torch.bfloat16,
+             "float": torch.float32}[dtype_name]
+    print(f"Transformers backend: device={device}, dtype={dtype_name}", flush=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        arguments.model, revision=arguments.revision, dtype=dtype).to(device)
+    if arguments.adapter:
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, arguments.adapter)
+    model.eval()
+
+    records, started = [], time.perf_counter()
+    with (out / RECORDS).open("w") as stream, torch.inference_mode():
+        for index, job in enumerate(jobs, 1):
+            torch.manual_seed(job["seed"])
+            input_ids = torch.tensor([job["ids"]], device=device)
+            attention_mask = torch.ones_like(input_ids)
+            output = model.generate(
+                input_ids=input_ids, attention_mask=attention_mask,
+                max_new_tokens=token_cap(job["row"]["dataset"], arguments),
+                do_sample=True, temperature=SAMPLING["temperature"],
+                top_p=SAMPLING["top_p"], top_k=SAMPLING["top_k"],
+                pad_token_id=tokenizer.eos_token_id,
+            )
+            tokens = output[0, input_ids.shape[1]:].tolist()
+            record = record_from_tokens(job, tokens, tokenizer, eos_ids, open_id, close_id)
+            records.append(record)
+            stream.write(json.dumps(record) + "\n")
+            stream.flush()
+            print(f"{index}/{len(jobs)}  {len(tokens)} tokens", flush=True)
+    finish_timing(arguments, started, records, "transformers", device)
     return records
 
 
@@ -308,8 +453,11 @@ def load_engine(arguments, longest_generation):
     rank = None
     if arguments.adapter:
         rank = json.loads((Path(arguments.adapter) / "adapter_config.json").read_text())["r"]
+    dtype = resolve_vllm_dtype(arguments.dtype)
+    print(f"vLLM dtype: {dtype}", flush=True)
     model = LLM(model=arguments.model, revision=arguments.revision,
                 tokenizer_revision=arguments.revision,
+                dtype=dtype,
                 max_model_len=longest_generation + PROMPT_BUDGET,
                 gpu_memory_utilization=0.85,
                 enable_prefix_caching=False, generation_config="vllm", seed=arguments.seed,
@@ -321,6 +469,17 @@ def load_engine(arguments, longest_generation):
     if 1 not in model.llm_engine.list_loras():
         raise ValueError("Adapter did not register")
     return model, lora
+
+
+def resolve_vllm_dtype(requested):
+    """Use fp16 on pre-Ampere GPUs whose hardware does not support bf16."""
+    if requested != "auto":
+        return requested
+    import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError("vLLM evaluation requires a CUDA GPU")
+    major, _ = torch.cuda.get_device_capability()
+    return "bfloat16" if major >= 8 else "half"
 
 
 def token_cap(dataset, arguments):
@@ -352,8 +511,11 @@ def to_record(job, output, lora, tokenizer, eos_ids, open_id, close_id):
     wrong_route = (used is not None) if lora is None else (used is None or used.lora_int_id != 1)
     if wrong_route:
         raise ValueError("Adapter routing mismatch")
-    result = output.outputs[0]
-    tokens = list(result.token_ids)
+    return record_from_tokens(job, list(output.outputs[0].token_ids), tokenizer,
+                              eos_ids, open_id, close_id)
+
+
+def record_from_tokens(job, tokens, tokenizer, eos_ids, open_id, close_id):
     final, reasoning, boundary = split_thinking(tokens, open_id, close_id, eos_ids)
     return {"id": job["row"]["id"], "dataset": job["row"]["dataset"],
             "sample_index": job["sample"], "seed": job["seed"],
@@ -450,6 +612,8 @@ def save_results(out, arguments, suite, grading, results, failed, caps):
         "adapter": str(Path(arguments.adapter).resolve()) if arguments.adapter else None,
         "benchmarks": arguments.benchmarks,
         "samples": arguments.samples, "seed": arguments.seed, "sampling": SAMPLING,
+        "backend": arguments.backend, "device": arguments.device, "dtype": arguments.dtype,
+        "generation": getattr(arguments, "generation_stats", None),
         "max_tokens": caps, "max_model_len": max(caps.values()) + PROMPT_BUDGET,
         "sandbox": {"mode": grading["mode"], "why": grading["why"]},
         "revisions": suite["revisions"], "cohort_sha256": suite["cohort_sha256"],

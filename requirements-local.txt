@@ -1,0 +1,22 @@
+# Local Apple-Silicon development and smoke tests. vLLM is intentionally absent:
+# it requires CUDA and is installed only by requirements.txt on Kaggle/Colab.
+torch>=2.6,<3
+transformers==4.57.1
+peft==0.17.1
+accelerate==1.10.1
+datasets>=3
+
+appdirs
+termcolor
+wget
+tempdir
+multipledispatch
+tree-sitter
+tree-sitter-python
+absl-py
+langdetect
+nltk
+immutabledict
+
+# Local submission/status/output commands for Kaggle notebooks.
+kaggle

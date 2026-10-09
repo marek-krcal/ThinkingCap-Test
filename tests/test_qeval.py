@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 from evaluate import (BENCHMARKS, DEFAULT_MAX_TOKENS, MAX_TOKENS, caps_in_use, collect,
-                      load_suite, report, select, token_cap)
+                      limit_questions_per_dataset, load_suite, report, select, token_cap)
 from utils.eval import benchmarks, sandbox
 from utils.eval.compare import (average, average_group, check, compare,
                                 full_evaluation_problems, loading_note, pair, report as compare_report)
@@ -152,6 +152,11 @@ class Selection(unittest.TestCase):
     def test_an_unknown_benchmark_is_rejected(self):
         with self.assertRaises(ValueError):
             select(self.COHORT, ["numeric"])
+
+    def test_development_limit_keeps_each_dataset(self):
+        rows = [{"dataset": "a", "id": 1}, {"dataset": "a", "id": 2},
+                {"dataset": "b", "id": 3}, {"dataset": "b", "id": 4}]
+        self.assertEqual([row["id"] for row in limit_questions_per_dataset(rows, 1)], [1, 3])
 
 
 class Intervals(unittest.TestCase):
