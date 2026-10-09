@@ -41,7 +41,9 @@ Three words appear throughout:
 import argparse
 from collections import Counter
 import json
+import multiprocessing
 import os
+import queue
 import signal
 from pathlib import Path
 import time
@@ -153,6 +155,8 @@ def parse_arguments():
                         help="Weight dtype. auto selects a dtype supported by the device")
     parser.add_argument("--tensor-parallel-size", type=int, default=1,
                         help="GPUs used by one vLLM engine (default 1)")
+    parser.add_argument("--data-parallel-size", type=int, default=1,
+                        help="Independent single-GPU engines managed by this launcher")
     parser.add_argument("--batch-size", type=int, default=BATCH,
                         help="Number of jobs queued per vLLM generate call")
     parser.add_argument("--max-num-seqs", type=int, default=32,
@@ -173,6 +177,12 @@ def parse_arguments():
     arguments = parser.parse_args()
     if arguments.tensor_parallel_size < 1 or arguments.batch_size < 1:
         parser.error("--tensor-parallel-size and --batch-size must be positive")
+    if arguments.data_parallel_size < 1:
+        parser.error("--data-parallel-size must be positive")
+    if arguments.data_parallel_size > 1 and arguments.tensor_parallel_size != 1:
+        parser.error("This offline data-parallel launcher requires tensor-parallel-size=1")
+    if arguments.data_parallel_size > 1 and arguments.backend == "transformers":
+        parser.error("Data parallelism currently requires the vLLM backend")
     if arguments.max_num_seqs < 1 or arguments.max_num_batched_tokens < 1:
         parser.error("vLLM scheduler limits must be positive")
     if not 0 < arguments.gpu_memory_utilization < 1:
@@ -353,6 +363,9 @@ def generate(questions, arguments, out):
     if backend == "transformers":
         return generate_transformers(jobs, arguments, out, tokenizer,
                                      eos_ids, open_id, close_id)
+    if arguments.data_parallel_size > 1:
+        return generate_vllm_data_parallel(jobs, arguments, out,
+                                          max(caps_in_use(questions, arguments).values()))
     return generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
                          max(caps_in_use(questions, arguments).values()))
 
@@ -375,6 +388,103 @@ def finish_timing(arguments, started, records, backend, device):
         "seconds_per_response": elapsed / len(records) if records else None,
     }
     print("Generation timing: " + json.dumps(arguments.generation_stats), flush=True)
+
+
+def shard_jobs(jobs, count):
+    """Distribute original jobs without changing their identifiers or seeds."""
+    return [jobs[index::count] for index in range(count)]
+
+
+def merge_shard_records(jobs, records):
+    order = {(job["row"]["id"], job["sample"]): position
+             for position, job in enumerate(jobs)}
+    keys = [(record["id"], record["sample_index"]) for record in records]
+    if len(keys) != len(jobs) or set(keys) != set(order):
+        raise RuntimeError("Data-parallel merge has missing or duplicate generations")
+    return sorted(records, key=lambda record: order[(record["id"], record["sample_index"])])
+
+
+def data_parallel_worker(index, jobs, arguments, out, longest_generation, notices):
+    """One isolated CUDA engine; spawned fresh, never forks a CUDA context."""
+    os.setsid()  # lets the controller clean up this engine and its descendants
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(index)
+    try:
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(arguments.model, revision=arguments.revision)
+        eos = tokenizer.eos_token_id
+        eos_ids = set(eos if isinstance(eos, list) else [eos])
+        open_id, close_id = (tokenizer.convert_tokens_to_ids(tag)
+                             for tag in ("<think>", "</think>"))
+        out.mkdir(parents=True, exist_ok=True)
+        print(f"Data-parallel worker {index}: {len(jobs)} jobs on GPU {index}", flush=True)
+        generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
+                      longest_generation)
+        notices.put((index, arguments.generation_stats, None))
+    except BaseException:
+        import traceback
+        notices.put((index, None, traceback.format_exc()))
+        raise
+
+
+def generate_vllm_data_parallel(jobs, arguments, out, longest_generation):
+    """One controller, independent GPU workers, one merged evaluation output."""
+    import torch
+    count = arguments.data_parallel_size
+    if torch.cuda.device_count() < count:
+        raise RuntimeError("Not enough CUDA GPUs for requested data parallel size")
+    if count > len(jobs):
+        raise ValueError("Data parallel size exceeds number of generation jobs")
+    started = time.perf_counter()
+    context = multiprocessing.get_context("spawn")
+    notices = context.Queue()
+    workers, completed = [], {}
+    shards = out / "shards"
+    def terminate_controller(signum, frame):
+        raise SystemExit("Data-parallel controller stopped")
+    previous_handler = signal.signal(signal.SIGTERM, terminate_controller)
+    try:
+        for index, subset in enumerate(shard_jobs(jobs, count)):
+            worker = context.Process(target=data_parallel_worker,
+                args=(index, subset, arguments, shards / str(index), longest_generation, notices))
+            worker.start()
+            workers.append(worker)
+        while len(completed) < count:
+            try:
+                index, stats, error = notices.get(timeout=10)
+            except queue.Empty:
+                for index, worker in enumerate(workers):
+                    if index not in completed and worker.exitcode is not None:
+                        raise RuntimeError(f"Data-parallel worker {index} exited before reporting: "
+                                           f"{worker.exitcode}")
+                continue
+            if error:
+                raise RuntimeError(f"Data-parallel worker {index} failed:\n{error}")
+            completed[index] = stats
+            print(f"Data-parallel worker {index} finished: {stats['responses']} responses", flush=True)
+        records = [record for index in range(count)
+                   for record in read_jsonl(shards / str(index) / RECORDS)]
+        records = merge_shard_records(jobs, records)
+        save_records(out, records)
+        arguments.startup_seconds = max(stats['engine_startup_seconds'] for stats in completed.values())
+        finish_timing(arguments, started, records, "vllm", "cuda")
+        arguments.generation_stats['workers'] = completed
+        return records
+    finally:
+        for worker in workers:
+            worker.join(timeout=2)
+            if worker.is_alive():
+                try:
+                    os.killpg(worker.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    worker.terminate()
+                worker.join(timeout=5)
+                if worker.is_alive():
+                    try:
+                        os.killpg(worker.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        worker.kill()
+                    worker.join(timeout=5)
+        signal.signal(signal.SIGTERM, previous_handler)
 
 
 def generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
@@ -657,6 +767,7 @@ def save_results(out, arguments, suite, grading, results, failed, caps):
         "samples": arguments.samples, "seed": arguments.seed, "sampling": SAMPLING,
         "backend": arguments.backend, "device": arguments.device, "dtype": arguments.dtype,
         "tensor_parallel_size": getattr(arguments, "tensor_parallel_size", 1),
+        "data_parallel_size": getattr(arguments, "data_parallel_size", 1),
         "batch_size": getattr(arguments, "batch_size", BATCH),
         "max_num_seqs": getattr(arguments, "max_num_seqs", 32),
         "max_num_batched_tokens": getattr(arguments, "max_num_batched_tokens", 2048),

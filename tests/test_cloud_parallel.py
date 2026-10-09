@@ -5,10 +5,34 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from evaluate import load_engine, parse_arguments
+from evaluate import load_engine, parse_arguments, shard_jobs, merge_shard_records
 
 
 class ParallelConfiguration(unittest.TestCase):
+    def test_data_parallel_keeps_jobs_seeds_and_order(self):
+        jobs = [{'row': {'id': str(i // 4)}, 'sample': i % 4, 'seed': 9001+i}
+                for i in range(20)]
+        shards = shard_jobs(jobs, 2)
+        self.assertEqual([len(s) for s in shards], [10, 10])
+        records = [{'id': j['row']['id'], 'sample_index': j['sample'], 'seed': j['seed']}
+                   for shard in reversed(shards) for j in shard]
+        merged = merge_shard_records(jobs, records)
+        self.assertEqual([r['seed'] for r in merged], [j['seed'] for j in jobs])
+        with self.assertRaises(RuntimeError):
+            merge_shard_records(jobs, records[:-1])
+        with self.assertRaises(RuntimeError):
+            merge_shard_records(jobs, records[:-1] + records[:1])
+
+    def test_data_parallel_parser_and_invalid_combinations(self):
+        with patch('sys.argv', ['evaluate.py', '--out', 'runs/test', '--data-parallel-size', '2']):
+            self.assertEqual(parse_arguments().data_parallel_size, 2)
+        for extra in (['--data-parallel-size', '0'],
+                      ['--data-parallel-size', '2', '--tensor-parallel-size', '2'],
+                      ['--data-parallel-size', '2', '--backend', 'transformers']):
+            with patch('sys.argv', ['evaluate.py', '--out', 'runs/test'] + extra):
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    parse_arguments()
+
     def test_defaults_preserve_single_gpu_and_existing_batch(self):
         with patch('sys.argv', ['evaluate.py', '--out', 'runs/test']):
             args = parse_arguments()

@@ -85,3 +85,20 @@ runtime is released.
 - For T4/P100 training use fp16, LoRA, micro-batch 1, gradient accumulation,
   gradient checkpointing, and chunked/fused cross-entropy.
 - The supplied `train.py` is a starting example, not a finished training method.
+# Offline two-GPU data parallelism
+
+For a model that fits on one GPU, the shared evaluator can use one controller
+with two independent vLLM worker engines:
+
+```sh
+python cloud/run_eval.py --out runs/dp-400 --backend vllm --dtype half \
+  --limit-per-benchmark 100 --samples 1 --data-parallel-size 2 --batch-size 128
+```
+
+This is an offline multiprocessing controller, not the vLLM API-server DP mode.
+It launches the same worker function on each GPU, using fresh spawned processes
+and GPU visibility isolation. Jobs retain their original IDs, sample indices,
+and seeds; shard records are merged into one `records.jsonl` and graded once.
+Each worker keeps batch-level records under `shards/` for failure diagnostics.
+Tensor parallelism must remain 1 in this mode. The full run uses `--full
+--samples 4` instead of `--limit-per-benchmark 100 --samples 1`.
