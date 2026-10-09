@@ -6,10 +6,13 @@ import subprocess
 import sys
 
 
-REPO_URL = os.environ.get("THINKINGCAP_REPO", "https://github.com/BottleCapAI/ThinkingCap-Test.git")
+REPO_URL = os.environ.get("THINKINGCAP_REPO", "https://github.com/marek-krcal/ThinkingCap-Test.git")
 REPO_REF = os.environ.get("THINKINGCAP_REF", "main")
 MODE = os.environ.get("THINKINGCAP_MODE", "smoke")  # smoke or full
-LIMIT_PER_BENCHMARK = os.environ.get("THINKINGCAP_LIMIT_PER_BENCHMARK")
+# The first cloud run is intentionally bounded: ten questions from each of
+# MBPP, BFCL, SVAMP and IFEval (40 total). Set this empty for the regular smoke
+# mode or override it for another development slice.
+LIMIT_PER_BENCHMARK = os.environ.get("THINKINGCAP_LIMIT_PER_BENCHMARK", "10")
 CHECKOUT = Path("/kaggle/working/ThinkingCap-Test")
 
 
