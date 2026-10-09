@@ -19,6 +19,8 @@ def main():
     parser.add_argument("--out", default="runs/cloud-smoke")
     parser.add_argument("--model", default="Qwen/Qwen3-0.6B")
     parser.add_argument("--adapter")
+    parser.add_argument("--backend", choices=("auto", "vllm", "transformers"), default="auto")
+    parser.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"), default="auto")
     parser.add_argument("--dtype", choices=("auto", "half", "bfloat16", "float"), default="auto")
     parser.add_argument("--full", action="store_true", help="Run the full eight-sample evaluation")
     parser.add_argument("--samples", type=int, help="Override samples (smoke defaults to 1)")
@@ -32,7 +34,8 @@ def main():
 
     command = [sys.executable, "evaluate.py", "--out", args.out,
                "--model", args.model, "--dtype", args.dtype,
-               "--benchmarks", args.benchmarks]
+               "--benchmarks", args.benchmarks,
+               "--backend", args.backend, "--device", args.device]
     if args.adapter:
         command += ["--adapter", args.adapter]
     if args.limit_per_benchmark:

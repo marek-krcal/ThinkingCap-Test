@@ -24,7 +24,8 @@ def run(command, cwd=None):
 if CHECKOUT.exists():
     raise SystemExit(f"Refusing to overwrite existing checkout: {CHECKOUT}")
 run(["git", "clone", "--depth", "1", "--branch", REPO_REF, REPO_URL, CHECKOUT])
-run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], CHECKOUT)
+run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements-local.txt"], CHECKOUT)
+run([sys.executable, "-c", "import torch; assert torch.cuda.is_available(), 'CUDA unavailable'; print('GPU:', torch.cuda.get_device_name(0), 'PyTorch:', torch.__version__, 'CUDA:', torch.version.cuda)"], CHECKOUT)
 
 output = "/kaggle/working/runs/base" if MODE == "full" else "/kaggle/working/runs/smoke"
 if MODE not in ("smoke", "full"):
@@ -34,7 +35,8 @@ if LIMIT_PER_BENCHMARK and (not LIMIT_PER_BENCHMARK.isdigit() or int(LIMIT_PER_B
 
 cloud_runner = CHECKOUT / "cloud/run_eval.py"
 if cloud_runner.exists():
-    command = [sys.executable, "cloud/run_eval.py", "--out", output, "--dtype", "auto"]
+    command = [sys.executable, "cloud/run_eval.py", "--out", output,
+               "--dtype", "half", "--backend", "transformers", "--device", "cuda"]
     if LIMIT_PER_BENCHMARK:
         command += ["--limit-per-benchmark", LIMIT_PER_BENCHMARK]
     if MODE == "full":
