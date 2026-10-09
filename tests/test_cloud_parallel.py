@@ -39,6 +39,9 @@ class ParallelConfiguration(unittest.TestCase):
             model, lora = load_engine(args, 8192)
         self.assertEqual(engine.call_count, 1)
         self.assertEqual(engine.call_args.kwargs['tensor_parallel_size'], 2)
+        self.assertEqual(engine.call_args.kwargs['max_num_seqs'], 32)
+        self.assertEqual(engine.call_args.kwargs['max_num_batched_tokens'], 2048)
+        self.assertEqual(engine.call_args.kwargs['gpu_memory_utilization'], 0.70)
         self.assertIs(model, engine.return_value)
         self.assertIsNone(lora)
 
@@ -52,3 +55,12 @@ class ParallelConfiguration(unittest.TestCase):
         with patch.dict('sys.modules', modules), self.assertRaises(RuntimeError):
             load_engine(args, 8192)
         engine.assert_not_called()
+
+    def test_invalid_scheduler_settings_rejected(self):
+        for flag, value in (('--max-num-seqs', '0'),
+                            ('--max-num-batched-tokens', '0'),
+                            ('--gpu-memory-utilization', '1')):
+            with self.subTest(flag=flag), patch('sys.argv',
+                    ['evaluate.py', '--out', 'runs/test', flag, value]):
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    parse_arguments()

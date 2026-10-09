@@ -62,6 +62,12 @@ one GPU for a small model; compare generation-only time and output-token counts.
 Parallel size and queue batch size are recorded with scores because outputs can
 change with these settings. Disposable environments, source and model downloads
 live under `/kaggle/temp`, not the archived `/kaggle/working` output tree.
+The memory-safe scheduler activates at most 32 sequences and 2048 prefill tokens,
+with 70% GPU memory allocation. Queuing 400 requests does not mean running 400
+simultaneously. After the 400-question run succeeds, this time-bounded campaign
+runs the full 2759-question cohort with four generations each (11036 answers).
+No new evaluation starts after 2026-10-10 02:00 Prague time; the absolute stop
+is 04:00 Prague, and monitoring decides whether a run merits the extra window.
 
 ## Colab
 

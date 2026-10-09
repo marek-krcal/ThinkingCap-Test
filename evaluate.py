@@ -154,6 +154,11 @@ def parse_arguments():
                         help="GPUs used by one vLLM engine (default 1)")
     parser.add_argument("--batch-size", type=int, default=BATCH,
                         help="Number of jobs queued per vLLM generate call")
+    parser.add_argument("--max-num-seqs", type=int, default=32,
+                        help="Maximum concurrently active vLLM sequences")
+    parser.add_argument("--max-num-batched-tokens", type=int, default=2048)
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.70,
+                        help="vLLM memory fraction; leave headroom for sampling")
     parser.add_argument("--limit-per-dataset", type=int,
                         help="Development only: keep the first N questions from each dataset")
     parser.add_argument("--limit-per-benchmark", type=int,
@@ -167,6 +172,10 @@ def parse_arguments():
     arguments = parser.parse_args()
     if arguments.tensor_parallel_size < 1 or arguments.batch_size < 1:
         parser.error("--tensor-parallel-size and --batch-size must be positive")
+    if arguments.max_num_seqs < 1 or arguments.max_num_batched_tokens < 1:
+        parser.error("vLLM scheduler limits must be positive")
+    if not 0 < arguments.gpu_memory_utilization < 1:
+        parser.error("--gpu-memory-utilization must be between 0 and 1")
     if arguments.limit_per_dataset is not None and arguments.limit_per_dataset < 1:
         parser.error("--limit-per-dataset must be positive")
     if arguments.limit_per_benchmark is not None and arguments.limit_per_benchmark < 1:
@@ -473,7 +482,10 @@ def load_engine(arguments, longest_generation):
                 dtype=dtype,
                 tensor_parallel_size=arguments.tensor_parallel_size,
                 max_model_len=longest_generation + PROMPT_BUDGET,
-                gpu_memory_utilization=0.85,
+                gpu_memory_utilization=getattr(arguments, 'gpu_memory_utilization', 0.70),
+                max_num_seqs=getattr(arguments, 'max_num_seqs', 32),
+                max_num_batched_tokens=getattr(arguments, 'max_num_batched_tokens', 2048),
+                enable_chunked_prefill=True,
                 enable_prefix_caching=False, generation_config="vllm", seed=arguments.seed,
                 enable_lora=rank is not None, max_lora_rank=rank or 16)
     if not arguments.adapter:
@@ -629,6 +641,9 @@ def save_results(out, arguments, suite, grading, results, failed, caps):
         "backend": arguments.backend, "device": arguments.device, "dtype": arguments.dtype,
         "tensor_parallel_size": getattr(arguments, "tensor_parallel_size", 1),
         "batch_size": getattr(arguments, "batch_size", BATCH),
+        "max_num_seqs": getattr(arguments, "max_num_seqs", 32),
+        "max_num_batched_tokens": getattr(arguments, "max_num_batched_tokens", 2048),
+        "gpu_memory_utilization": getattr(arguments, "gpu_memory_utilization", 0.70),
         "generation": getattr(arguments, "generation_stats", None),
         "max_tokens": caps, "max_model_len": max(caps.values()) + PROMPT_BUDGET,
         "sandbox": {"mode": grading["mode"], "why": grading["why"]},

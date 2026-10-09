@@ -1,5 +1,6 @@
 """Isolated CUDA 12.8 vLLM comparison, with explicit setup timings."""
 import json
+import datetime
 import os
 import pathlib
 import shutil
@@ -16,16 +17,19 @@ root = scratch / 'ThinkingCap-Test'
 os.environ['UV_CACHE_DIR'] = str(scratch / 'uv-cache')
 os.environ['HF_HOME'] = str(scratch / 'huggingface')
 timings = {}
+cutoff = datetime.datetime(2026, 10, 10, 0, tzinfo=datetime.timezone.utc).timestamp()
+hard_stop = cutoff + 7200
 cache = pathlib.Path('/kaggle/working/eval-cache')
 cache.mkdir(exist_ok=True)
 os.environ['NLTK_DATA'] = str(cache / 'nltk_data')
 (cache / 'nltk_data').mkdir(mode=0o700, exist_ok=True)
 
-def run(label, command, cwd=None):
+def run(label, command, cwd=None, timeout=1500):
     started = time.perf_counter()
     print(label, command, flush=True)
     try:
-        subprocess.run(command, cwd=cwd, check=True, timeout=1500)
+        subprocess.run(command, cwd=cwd, check=True,
+                       timeout=min(timeout, max(1, hard_stop - time.time())))
     finally:
         timings[label] = time.perf_counter() - started
         pathlib.Path('/kaggle/working/setup-timing.json').write_text(json.dumps(timings, indent=2))
@@ -98,6 +102,13 @@ try:
     run('evaluation_total', [python, 'cloud/run_eval.py', '--out', '/kaggle/working/runs/vllm',
         '--backend', 'vllm', '--dtype', 'half', '--limit-per-benchmark', '100',
         '--samples', '1', '--tensor-parallel-size', '2', '--batch-size', '400'], root)
+    if time.time() < cutoff:
+        run('full_x4_evaluation_total', [python, 'cloud/run_eval.py',
+            '--out', '/kaggle/working/runs/full-x4', '--backend', 'vllm', '--dtype', 'half',
+            '--full', '--samples', '4', '--tensor-parallel-size', '2',
+            '--batch-size', '512'], root, timeout=max(1, hard_stop - time.time()))
+    else:
+        print('Cutoff reached: full evaluation will not be started.', flush=True)
 finally:
     stopped.set()
     monitor.join(timeout=12)
