@@ -42,6 +42,8 @@ class ParallelConfiguration(unittest.TestCase):
         self.assertEqual(engine.call_args.kwargs['max_num_seqs'], 32)
         self.assertEqual(engine.call_args.kwargs['max_num_batched_tokens'], 2048)
         self.assertEqual(engine.call_args.kwargs['gpu_memory_utilization'], 0.70)
+        self.assertTrue(engine.call_args.kwargs['enforce_eager'])
+        self.assertTrue(engine.call_args.kwargs['disable_custom_all_reduce'])
         self.assertIs(model, engine.return_value)
         self.assertIsNone(lora)
 

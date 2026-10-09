@@ -16,6 +16,9 @@ scratch.mkdir(parents=True, exist_ok=True)
 root = scratch / 'ThinkingCap-Test'
 os.environ['UV_CACHE_DIR'] = str(scratch / 'uv-cache')
 os.environ['HF_HOME'] = str(scratch / 'huggingface')
+# Kaggle's paired T4s have no usable GPU P2P link. Force the host transport.
+os.environ['NCCL_P2P_DISABLE'] = '1'
+os.environ['NCCL_DEBUG'] = 'WARN'
 timings = {}
 cutoff = datetime.datetime(2026, 10, 10, 0, tzinfo=datetime.timezone.utc).timestamp()
 hard_stop = cutoff + 7200

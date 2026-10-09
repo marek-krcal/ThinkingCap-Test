@@ -42,6 +42,7 @@ import argparse
 from collections import Counter
 import json
 import os
+import signal
 from pathlib import Path
 import time
 
@@ -384,6 +385,19 @@ def generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
     started = time.perf_counter()
     # The engine has to hold the largest budget any benchmark in this run uses.
     model, lora = load_engine(arguments, longest_generation)
+    print('Engine health check: generating 16 tokens before the evaluation queue', flush=True)
+    def health_timeout(signum, frame):
+        raise TimeoutError('16-token engine health check exceeded 120 seconds')
+    previous_handler = signal.signal(signal.SIGALRM, health_timeout)
+    signal.alarm(120)
+    try:
+        model.generate([{"prompt_token_ids": jobs[0]["ids"]}],
+                       SamplingParams(max_tokens=16, temperature=0, seed=arguments.seed),
+                       lora_request=lora, use_tqdm=False)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous_handler)
+    print('Engine health check passed', flush=True)
     arguments.startup_seconds = time.perf_counter() - started
     print(f"vLLM engine startup seconds: {arguments.startup_seconds:.3f}", flush=True)
 
@@ -486,6 +500,9 @@ def load_engine(arguments, longest_generation):
                 max_num_seqs=getattr(arguments, 'max_num_seqs', 32),
                 max_num_batched_tokens=getattr(arguments, 'max_num_batched_tokens', 2048),
                 enable_chunked_prefill=True,
+                enforce_eager=True,
+                disable_custom_all_reduce=True,
+                disable_log_stats=False,
                 enable_prefix_caching=False, generation_config="vllm", seed=arguments.seed,
                 enable_lora=rank is not None, max_lora_rank=rank or 16)
     if not arguments.adapter:
@@ -644,6 +661,7 @@ def save_results(out, arguments, suite, grading, results, failed, caps):
         "max_num_seqs": getattr(arguments, "max_num_seqs", 32),
         "max_num_batched_tokens": getattr(arguments, "max_num_batched_tokens", 2048),
         "gpu_memory_utilization": getattr(arguments, "gpu_memory_utilization", 0.70),
+        "enforce_eager": True,
         "generation": getattr(arguments, "generation_stats", None),
         "max_tokens": caps, "max_model_len": max(caps.values()) + PROMPT_BUDGET,
         "sandbox": {"mode": grading["mode"], "why": grading["why"]},
