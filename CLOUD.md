@@ -54,6 +54,15 @@ Kaggle captures them as notebook output.
 Kaggle T4 and P100 GPUs use fp16 automatically. Ampere and newer GPUs use bf16.
 Always evaluate the base and candidate with the same dtype.
 
+The dedicated `cloud/kaggle-vllm` runner evaluates 100 questions per benchmark
+(400 generations, one each) using one vLLM engine with tensor parallel size 2
+on Kaggle's two T4s. It queues all 400 jobs together and records both GPU
+utilization and memory every 15 seconds. Tensor parallelism can be slower than
+one GPU for a small model; compare generation-only time and output-token counts.
+Parallel size and queue batch size are recorded with scores because outputs can
+change with these settings. Disposable environments, source and model downloads
+live under `/kaggle/temp`, not the archived `/kaggle/working` output tree.
+
 ## Colab
 
 Open `cloud/colab/ThinkingCap_Test.ipynb`, change `REPO_URL` and `REPO_REF` to

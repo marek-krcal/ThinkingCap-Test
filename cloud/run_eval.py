@@ -22,6 +22,8 @@ def main():
     parser.add_argument("--backend", choices=("auto", "vllm", "transformers"), default="auto")
     parser.add_argument("--device", choices=("auto", "cpu", "mps", "cuda"), default="auto")
     parser.add_argument("--dtype", choices=("auto", "half", "bfloat16", "float"), default="auto")
+    parser.add_argument("--tensor-parallel-size", type=int, default=1)
+    parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--full", action="store_true", help="Run the full eight-sample evaluation")
     parser.add_argument("--samples", type=int, help="Override samples (smoke defaults to 1)")
     parser.add_argument("--limit-per-benchmark", type=int,
@@ -36,6 +38,8 @@ def main():
                "--model", args.model, "--dtype", args.dtype,
                "--benchmarks", args.benchmarks,
                "--backend", args.backend, "--device", args.device]
+    command += ["--tensor-parallel-size", str(args.tensor_parallel_size),
+                "--batch-size", str(args.batch_size)]
     if args.adapter:
         command += ["--adapter", args.adapter]
     if args.limit_per_benchmark:

@@ -150,6 +150,10 @@ def parse_arguments():
                         help="Device for the Transformers backend")
     parser.add_argument("--dtype", choices=("auto", "half", "bfloat16", "float"), default="auto",
                         help="Weight dtype. auto selects a dtype supported by the device")
+    parser.add_argument("--tensor-parallel-size", type=int, default=1,
+                        help="GPUs used by one vLLM engine (default 1)")
+    parser.add_argument("--batch-size", type=int, default=BATCH,
+                        help="Number of jobs queued per vLLM generate call")
     parser.add_argument("--limit-per-dataset", type=int,
                         help="Development only: keep the first N questions from each dataset")
     parser.add_argument("--limit-per-benchmark", type=int,
@@ -161,6 +165,8 @@ def parse_arguments():
     parser.add_argument("--regrade", action="store_true",
                         help=f"Re-grade a finished run's {RECORDS} without generating again")
     arguments = parser.parse_args()
+    if arguments.tensor_parallel_size < 1 or arguments.batch_size < 1:
+        parser.error("--tensor-parallel-size and --batch-size must be positive")
     if arguments.limit_per_dataset is not None and arguments.limit_per_dataset < 1:
         parser.error("--limit-per-dataset must be positive")
     if arguments.limit_per_benchmark is not None and arguments.limit_per_benchmark < 1:
@@ -374,8 +380,9 @@ def generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
 
     records = []
     with (out / RECORDS).open("w") as stream:
-        for start in range(0, len(jobs), BATCH):
-            batch = jobs[start:start + BATCH]
+        batch_size = arguments.batch_size
+        for start in range(0, len(jobs), batch_size):
+            batch = jobs[start:start + batch_size]
             settings = [SamplingParams(max_tokens=token_cap(job["row"]["dataset"], arguments),
                                        seed=job["seed"], stop_token_ids=list(eos_ids),
                                        **SAMPLING) for job in batch]
@@ -458,9 +465,13 @@ def load_engine(arguments, longest_generation):
         rank = json.loads((Path(arguments.adapter) / "adapter_config.json").read_text())["r"]
     dtype = resolve_vllm_dtype(arguments.dtype)
     print(f"vLLM dtype: {dtype}", flush=True)
+    import torch
+    if torch.cuda.device_count() < arguments.tensor_parallel_size:
+        raise RuntimeError("Not enough CUDA GPUs for requested tensor parallel size")
     model = LLM(model=arguments.model, revision=arguments.revision,
                 tokenizer_revision=arguments.revision,
                 dtype=dtype,
+                tensor_parallel_size=arguments.tensor_parallel_size,
                 max_model_len=longest_generation + PROMPT_BUDGET,
                 gpu_memory_utilization=0.85,
                 enable_prefix_caching=False, generation_config="vllm", seed=arguments.seed,
@@ -616,6 +627,8 @@ def save_results(out, arguments, suite, grading, results, failed, caps):
         "benchmarks": arguments.benchmarks,
         "samples": arguments.samples, "seed": arguments.seed, "sampling": SAMPLING,
         "backend": arguments.backend, "device": arguments.device, "dtype": arguments.dtype,
+        "tensor_parallel_size": getattr(arguments, "tensor_parallel_size", 1),
+        "batch_size": getattr(arguments, "batch_size", BATCH),
         "generation": getattr(arguments, "generation_stats", None),
         "max_tokens": caps, "max_model_len": max(caps.values()) + PROMPT_BUDGET,
         "sandbox": {"mode": grading["mode"], "why": grading["why"]},

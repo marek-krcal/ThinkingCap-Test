@@ -5,9 +5,16 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
-root = pathlib.Path('/kaggle/working/ThinkingCap-Test')
+# Kaggle archives everything in /kaggle/working. Keep disposable multi-GB
+# environments, driver links and source checkout out of the output tree.
+scratch = pathlib.Path('/kaggle/temp/thinkingcap')
+scratch.mkdir(parents=True, exist_ok=True)
+root = scratch / 'ThinkingCap-Test'
+os.environ['UV_CACHE_DIR'] = str(scratch / 'uv-cache')
+os.environ['HF_HOME'] = str(scratch / 'huggingface')
 timings = {}
 cache = pathlib.Path('/kaggle/working/eval-cache')
 cache.mkdir(exist_ok=True)
@@ -18,7 +25,7 @@ def run(label, command, cwd=None):
     started = time.perf_counter()
     print(label, command, flush=True)
     try:
-        subprocess.run(command, cwd=cwd, check=True)
+        subprocess.run(command, cwd=cwd, check=True, timeout=1500)
     finally:
         timings[label] = time.perf_counter() - started
         pathlib.Path('/kaggle/working/setup-timing.json').write_text(json.dumps(timings, indent=2))
@@ -36,7 +43,7 @@ def configure_cuda_linker():
     driver = next((p.resolve() for p in candidates if p.is_file() and 'stubs' not in str(p)), None)
     if driver is None:
         raise RuntimeError('Cannot locate host libcuda.so.1 for FlashInfer linking')
-    link_dir = pathlib.Path('/kaggle/working/cuda-driver-link')
+    link_dir = scratch / 'cuda-driver-link'
     link_dir.mkdir(exist_ok=True)
     (link_dir / 'libcuda.so').symlink_to(driver)
     (link_dir / 'libcuda.so.1').symlink_to(driver)
@@ -53,10 +60,10 @@ configure_cuda_linker()
 
 run('clone', ['git', 'clone', '--depth', '1', 'https://github.com/marek-krcal/ThinkingCap-Test.git', str(root)])
 run('installer_bootstrap', [sys.executable, '-m', 'pip', 'install', '-q', 'uv'])
-run('python_environment', ['uv', 'venv', '--python', '3.12', '/kaggle/working/vllm-env'])
-python = '/kaggle/working/vllm-env/bin/python'
+run('python_environment', ['uv', 'venv', '--python', '3.12', str(scratch / 'vllm-env')])
+python = str(scratch / 'vllm-env/bin/python')
 run('dependency_install', ['uv', 'pip', 'install', '--python', python, '--torch-backend', 'cu128', 'vllm==0.11.2', 'nltk==3.9.2', '-r', 'requirements-local.txt'], root)
-run('import_check', [python, '-c', "import torch, vllm; print('torch',torch.__version__,'CUDA',torch.version.cuda,'vllm',vllm.__version__); assert torch.cuda.is_available()"], root)
+run('import_check', [python, '-c', "import torch, vllm; print('torch',torch.__version__,'CUDA',torch.version.cuda,'vllm',vllm.__version__); print('GPUs:',torch.cuda.device_count()); assert torch.cuda.device_count() >= 2, 'Two GPUs required'"], root)
 # Attach an earlier successful kernel's output to reuse its frozen cohort.
 for manifest in pathlib.Path('/kaggle/input').rglob('eval-cache/questions/manifest.json'):
     shutil.copytree(manifest.parent, root / 'questions')
@@ -68,4 +75,30 @@ for manifest in pathlib.Path('/kaggle/input').rglob('eval-cache/questions/manife
 if not (root / 'questions/manifest.json').exists():
     run('benchmark_preparation', [python, 'utils/eval/benchmarks.py'], root)
 shutil.copytree(root / 'questions', cache / 'questions', dirs_exist_ok=True)
-run('evaluation_total', [python, 'cloud/run_eval.py', '--out', '/kaggle/working/runs/vllm', '--backend', 'vllm', '--dtype', 'half', '--limit-per-benchmark', '10', '--samples', '1'], root)
+
+stopped = threading.Event()
+def monitor_gpus():
+    """Log each GPU's real utilization so allocation is not mistaken for use."""
+    while not stopped.is_set():
+        try:
+            stats = subprocess.check_output([
+                'nvidia-smi', '--query-gpu=index,utilization.gpu,memory.used,memory.total',
+                '--format=csv,noheader,nounits'], text=True, timeout=10)
+            print('GPU index, utilization %, memory used MiB, total MiB:\n' + stats,
+                  flush=True)
+            with pathlib.Path('/kaggle/working/gpu-utilization.jsonl').open('a') as stream:
+                stream.write(json.dumps({'time': time.time(), 'stats': stats}) + '\n')
+        except (OSError, subprocess.SubprocessError) as error:
+            print('GPU telemetry unavailable:', error, flush=True)
+        stopped.wait(15)
+
+monitor = threading.Thread(target=monitor_gpus, daemon=True)
+monitor.start()
+try:
+    run('evaluation_total', [python, 'cloud/run_eval.py', '--out', '/kaggle/working/runs/vllm',
+        '--backend', 'vllm', '--dtype', 'half', '--limit-per-benchmark', '100',
+        '--samples', '1', '--tensor-parallel-size', '2', '--batch-size', '400'], root)
+finally:
+    stopped.set()
+    monitor.join(timeout=12)
+print('Finished; output contains only results, timings, telemetry and benchmark cache.', flush=True)
