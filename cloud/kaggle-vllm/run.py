@@ -3,6 +3,7 @@ import json
 import datetime
 import os
 import pathlib
+import signal
 import shutil
 import subprocess
 import sys
@@ -31,8 +32,19 @@ def run(label, command, cwd=None, timeout=1500):
     started = time.perf_counter()
     print(label, command, flush=True)
     try:
-        subprocess.run(command, cwd=cwd, check=True,
-                       timeout=min(timeout, max(1, hard_stop - time.time())))
+        process = subprocess.Popen(command, cwd=cwd, start_new_session=True)
+        try:
+            returncode = process.wait(timeout=min(timeout, max(1, hard_stop - time.time())))
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+            raise
+        if returncode:
+            raise subprocess.CalledProcessError(returncode, command)
     finally:
         timings[label] = time.perf_counter() - started
         pathlib.Path('/kaggle/working/setup-timing.json').write_text(json.dumps(timings, indent=2))
@@ -104,12 +116,12 @@ monitor.start()
 try:
     run('evaluation_total', [python, 'cloud/run_eval.py', '--out', '/kaggle/working/runs/vllm',
         '--backend', 'vllm', '--dtype', 'half', '--limit-per-benchmark', '100',
-        '--samples', '1', '--tensor-parallel-size', '2', '--batch-size', '400'], root)
+        '--samples', '1', '--data-parallel-size', '2', '--batch-size', '128'], root)
     if time.time() < cutoff:
         run('full_x4_evaluation_total', [python, 'cloud/run_eval.py',
             '--out', '/kaggle/working/runs/full-x4', '--backend', 'vllm', '--dtype', 'half',
-            '--full', '--samples', '4', '--tensor-parallel-size', '2',
-            '--batch-size', '512'], root, timeout=max(1, hard_stop - time.time()))
+            '--full', '--samples', '4', '--data-parallel-size', '2',
+            '--batch-size', '128'], root, timeout=max(1, hard_stop - time.time()))
     else:
         print('Cutoff reached: full evaluation will not be started.', flush=True)
 finally:
