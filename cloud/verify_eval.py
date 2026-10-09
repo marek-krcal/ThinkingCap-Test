@@ -7,6 +7,59 @@ import math
 from pathlib import Path
 
 
+def compare_development_slice(records, cohort, reference, limit=100):
+    """Compare the same deterministic slice, not differently weighted cohorts.
+
+    v6 retained aggregate logs, not per-answer artifacts. These are diagnostic
+    flags (10 percentage points / 30% token length), not paired significance
+    tests, which would require the missing per-answer reference records.
+    """
+    groups = {'mbpp': ['mbpp'], 'bfcl': ['bfcl_simple_python', 'bfcl_multiple', 'bfcl_irrelevance'],
+              'svamp': ['svamp'], 'ifeval': ['ifeval']}
+    reports = {}
+    for benchmark, datasets in groups.items():
+        pools = {dataset: [q for q in cohort if q['dataset'] == dataset] for dataset in datasets}
+        positions = Counter()
+        chosen = []
+        while len(chosen) < limit:
+            added = False
+            for dataset in datasets:
+                if len(chosen) >= limit:
+                    break
+                if positions[dataset] < len(pools[dataset]):
+                    chosen.append(pools[dataset][positions[dataset]]['id'])
+                    positions[dataset] += 1
+                    added = True
+            if not added:
+                break
+        wanted = set(chosen)
+        subset = [r for r in records if r['id'] in wanted and r['sample_index'] == 0]
+        baseline = reference['benchmark_scores'][benchmark]
+        expected_count = baseline['questions']
+        baseline_accuracy = baseline['correct'] / expected_count
+        if benchmark == 'bfcl':
+            baseline_mean = sum(row['questions'] * row['mean_output_tokens']
+                                for row in reference['bfcl_dataset_scores'].values()) / expected_count
+        else:
+            baseline_mean = baseline['mean_output_tokens']
+        accuracy = sum(r.get('correct') is True for r in subset) / len(subset) if subset else 0
+        mean = sum(r['output_tokens'] for r in subset) / len(subset) if subset else 0
+        delta = 100 * (accuracy - baseline_accuracy)
+        ratio = mean / baseline_mean
+        warnings = []
+        if len(subset) != expected_count or len(wanted) != expected_count:
+            warnings.append('Incomplete matched reference slice')
+        if abs(delta) > 10.000001:
+            warnings.append('Accuracy differs by more than 10 percentage points: investigate')
+        if not .7 <= ratio <= 1.3:
+            warnings.append('Mean token length differs by more than 30%: investigate')
+        reports[benchmark] = {'questions': len(subset), 'reference_accuracy': baseline_accuracy,
+            'current_accuracy': accuracy, 'accuracy_change_pp': delta,
+            'reference_mean_tokens': baseline_mean, 'current_mean_tokens': mean,
+            'token_length_ratio': ratio, 'warnings': warnings}
+    return reports
+
+
 def verify(out, questions, expected_questions=2759, samples=1):
     results = json.loads((out / 'results.json').read_text())
     records = [json.loads(line) for line in (out / 'records.jsonl').read_text().splitlines()]
@@ -74,7 +127,17 @@ if __name__ == '__main__':
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--questions', type=Path, default=Path('questions'))
     parser.add_argument('--samples', type=int, default=1)
+    parser.add_argument('--development-reference', type=Path,
+                        help='Optional log-derived 400-question reference summary')
     args = parser.parse_args()
     report = verify(args.out, args.questions, samples=args.samples)
+    if args.development_reference:
+        records = [json.loads(line) for line in (args.out / 'records.jsonl').read_text().splitlines()]
+        cohort = [json.loads(line) for line in (args.questions / 'questions.jsonl').read_text().splitlines()]
+        reference = json.loads(args.development_reference.read_text())
+        report['matched_400_comparison'] = compare_development_slice(records, cohort, reference)
+        report['comparison_needs_investigation'] = any(
+            item['warnings'] for item in report['matched_400_comparison'].values())
     print(json.dumps(report, indent=2))
-    raise SystemExit(0 if report['verified'] else 1)
+    raise SystemExit(1 if not report['verified'] else
+                     2 if report.get('comparison_needs_investigation') else 0)

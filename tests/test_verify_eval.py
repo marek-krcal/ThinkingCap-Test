@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from cloud.verify_eval import verify
+from cloud.verify_eval import verify, compare_development_slice
 
 
 class CompletionAudit(unittest.TestCase):
@@ -64,3 +64,28 @@ class CompletionAudit(unittest.TestCase):
     def test_missing_text_fails(self):
         self.records[0].pop('text')
         self.assertIn('Missing answer text', self.check()['errors'])
+
+    def matched_fixture(self):
+        datasets = ['mbpp', 'bfcl_simple_python', 'bfcl_multiple', 'bfcl_irrelevance', 'svamp', 'ifeval']
+        cohort = [{'id': f'{d}/{i}', 'dataset': d} for d in datasets for i in range(5)]
+        records = [{'id': q['id'], 'dataset': q['dataset'], 'sample_index': 0,
+                    'correct': True, 'output_tokens': 10} for q in cohort]
+        reference = {'benchmark_scores': {b: {'questions': 4, 'correct': 4,
+                     'mean_output_tokens': 10} for b in ['mbpp', 'bfcl', 'svamp', 'ifeval']},
+                     'bfcl_dataset_scores': {d: {'questions': n, 'mean_output_tokens': 10}
+                     for d, n in zip(datasets[1:4], [2, 1, 1])}}
+        return cohort, records, reference
+
+    def test_matched_comparison_ignores_extra_cohort_questions(self):
+        cohort, records, reference = self.matched_fixture()
+        for record in records:
+            if record['id'].endswith('/4'):
+                record.update(correct=False, output_tokens=10000)
+        reports = compare_development_slice(records, cohort, reference, limit=4)
+        self.assertTrue(all(r['questions'] == 4 and not r['warnings'] for r in reports.values()))
+
+    def test_matched_comparison_flags_accuracy_and_token_drift(self):
+        cohort, records, reference = self.matched_fixture()
+        records[0].update(correct=False, output_tokens=1000)
+        reports = compare_development_slice(records, cohort, reference, limit=4)
+        self.assertEqual(len(reports['mbpp']['warnings']), 2)
