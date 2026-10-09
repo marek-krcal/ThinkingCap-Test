@@ -1,0 +1,12 @@
+{
+  "objective": "Complete the 400-question two-GPU evaluation, then evaluate all 2759 questions with ONE answer per question.",
+  "supersedes": "The earlier four-answers-per-question goal is superseded by the user's explicit switch to 1 on 2026-10-09.",
+  "full_dataset_questions": 2759,
+  "samples_per_question": 1,
+  "400_stage": "Completed in Kaggle v6; scores and timings preserved in runs/kaggle-vllm-v6/400-log-summary.json. Original artifacts not yet retrieved; cancellation may prevent retrieval. Do not repeat the stage just to regenerate artifacts.",
+  "no_new_runs_after_utc": "2026-10-10T00:00:00Z",
+  "continue_at_cutoff_only_if_remaining_seconds_at_most": 7200,
+  "absolute_stop_utc": "2026-10-10T02:00:00Z",
+  "model_dataset_token_caps_and_graders": "unchanged",
+  "status": "active"
+}

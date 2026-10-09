@@ -114,14 +114,13 @@ def monitor_gpus():
 monitor = threading.Thread(target=monitor_gpus, daemon=True)
 monitor.start()
 try:
-    run('evaluation_total', [python, 'cloud/run_eval.py', '--out', '/kaggle/working/runs/vllm',
-        '--backend', 'vllm', '--dtype', 'half', '--limit-per-benchmark', '100',
-        '--samples', '1', '--data-parallel-size', '2', '--batch-size', '128'], root)
+    # User revised the campaign to full x1 after v6 completed the 400-question
+    # stage. Do not spend quota repeating that completed stage.
     if time.time() < cutoff:
-        run('full_x4_evaluation_total', [python, 'cloud/run_eval.py',
-            '--out', '/kaggle/working/runs/full-x4', '--backend', 'vllm', '--dtype', 'half',
-            '--full', '--samples', '4', '--data-parallel-size', '2',
-            '--batch-size', '128'], root, timeout=max(1, hard_stop - time.time()))
+        run('full_x1_evaluation_total', [python, 'cloud/run_eval.py',
+            '--out', '/kaggle/working/runs/full-x1', '--backend', 'vllm', '--dtype', 'half',
+            '--full', '--samples', '1', '--tensor-parallel-size', '2',
+            '--batch-size', '512'], root, timeout=max(1, hard_stop - time.time()))
     else:
         print('Cutoff reached: full evaluation will not be started.', flush=True)
 finally:
