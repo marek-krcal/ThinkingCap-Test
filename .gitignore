@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
 .venv*/
+.venv-local/
+.hf-cache/
+.nltk_data/
 
 # eval: built by utils/eval/benchmarks.py, rebuilt in seconds, never committed
 vendor/
@@ -14,3 +17,4 @@ data/
 
 outputs/
 *.log
+.DS_Store
