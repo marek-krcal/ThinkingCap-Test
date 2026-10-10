@@ -25,6 +25,10 @@ def main():
     parser.add_argument("--tensor-parallel-size", type=int, default=1)
     parser.add_argument("--data-parallel-size", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--continuous-queue", action="store_true")
+    parser.add_argument("--max-num-seqs", type=int, default=32)
+    parser.add_argument("--max-num-batched-tokens", type=int, default=2048)
+    parser.add_argument("--gpu-memory-utilization", type=float, default=.70)
     parser.add_argument("--full", action="store_true", help="Run the full eight-sample evaluation")
     parser.add_argument("--samples", type=int, help="Override samples (smoke defaults to 1)")
     parser.add_argument("--limit-per-benchmark", type=int,
@@ -42,6 +46,11 @@ def main():
     command += ["--tensor-parallel-size", str(args.tensor_parallel_size),
                 "--data-parallel-size", str(args.data_parallel_size),
                 "--batch-size", str(args.batch_size)]
+    command += ["--max-num-seqs", str(args.max_num_seqs),
+                "--max-num-batched-tokens", str(args.max_num_batched_tokens),
+                "--gpu-memory-utilization", str(args.gpu_memory_utilization)]
+    if args.continuous_queue:
+        command.append('--continuous-queue')
     if args.adapter:
         command += ["--adapter", args.adapter]
     if args.limit_per_benchmark:

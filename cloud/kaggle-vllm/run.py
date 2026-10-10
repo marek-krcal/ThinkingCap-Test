@@ -9,6 +9,8 @@ import sys
 import threading
 import time
 
+optimize = os.environ.get('THINKINGCAP_OPTIMIZE', '0') == '1'
+
 # Kaggle archives everything in /kaggle/working. Keep disposable multi-GB
 # environments, driver links and source checkout out of the output tree.
 scratch = pathlib.Path('/kaggle/temp/thinkingcap')
@@ -135,13 +137,13 @@ def monitor_gpus():
             stats = subprocess.check_output([
                 'nvidia-smi', '--query-gpu=index,utilization.gpu,memory.used,memory.total',
                 '--format=csv,noheader,nounits'], text=True, timeout=10)
-            print('GPU index, utilization %, memory used MiB, total MiB:\n' + stats,
-                  flush=True)
+            if not optimize:
+                print('GPU index, utilization %, memory used MiB, total MiB:\n' + stats, flush=True)
             with pathlib.Path('/kaggle/working/gpu-utilization.jsonl').open('a') as stream:
                 stream.write(json.dumps({'time': time.time(), 'stats': stats}) + '\n')
         except (OSError, subprocess.SubprocessError) as error:
             print('GPU telemetry unavailable:', error, flush=True)
-        stopped.wait(15)
+        stopped.wait(1 if optimize else 15)
 
 monitor = threading.Thread(target=monitor_gpus, daemon=True)
 monitor.start()
@@ -154,6 +156,9 @@ try:
         command += ['--limit-per-benchmark', str(limit)]
     elif mode == 'full':
         command.append('--full')
+    if optimize:
+        command = [python, '-m', 'cloud.optimize_eval', '--out', '/kaggle/working/runs/optimization',
+                   '--timeout-seconds', str(max(1, int(hard_stop - time.time() - 30)))]
     run('evaluation_total', command, root, timeout=max(1, hard_stop - time.time()))
 finally:
     stopped.set()

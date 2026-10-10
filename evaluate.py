@@ -101,7 +101,9 @@ def main():
     # records are the answers: one generation per question per sample, graded.
     grading = grading_context(suite, arguments)
     records = reload_records(out) if arguments.regrade else generate(questions, arguments, out)
+    record_event(out, 'grading_started')
     grade_all(questions, records, grading)
+    record_event(out, 'grading_finished')
     save_records(out, records)
 
     # results are per benchmark; failed names any whose grader could not run at
@@ -159,6 +161,8 @@ def parse_arguments():
                         help="Independent single-GPU engines managed by this launcher")
     parser.add_argument("--batch-size", type=int, default=BATCH,
                         help="Number of jobs queued per vLLM generate call")
+    parser.add_argument("--continuous-queue", action="store_true",
+                        help="Queue all jobs on the engine and save each finished answer immediately")
     parser.add_argument("--max-num-seqs", type=int, default=32,
                         help="Maximum concurrently active vLLM sequences")
     parser.add_argument("--max-num-batched-tokens", type=int, default=2048)
@@ -383,11 +387,18 @@ def finish_timing(arguments, started, records, backend, device):
     arguments.generation_stats = {
         "backend": backend, "device": device, "elapsed_seconds": elapsed,
         "engine_startup_seconds": getattr(arguments, "startup_seconds", None),
+        "generation_only_seconds": elapsed - getattr(arguments, "startup_seconds", 0),
         "responses": len(records), "output_tokens": tokens,
         "tokens_per_second": tokens / elapsed if elapsed else None,
         "seconds_per_response": elapsed / len(records) if records else None,
     }
     print("Generation timing: " + json.dumps(arguments.generation_stats), flush=True)
+
+
+def record_event(out, phase, **values):
+    with (out / 'events.jsonl').open('a') as stream:
+        stream.write(json.dumps(dict(time=time.time(), monotonic=time.perf_counter(),
+                                    phase=phase, **values)) + '\n')
 
 
 def shard_jobs(jobs, count):
@@ -435,6 +446,7 @@ def generate_vllm_data_parallel(jobs, arguments, out, longest_generation):
     if count > len(jobs):
         raise ValueError("Data parallel size exceeds number of generation jobs")
     started = time.perf_counter()
+    record_event(out, 'engine_startup_started')
     context = multiprocessing.get_context("spawn")
     notices = context.Queue()
     workers, completed = [], {}
@@ -480,12 +492,13 @@ def generate_vllm_data_parallel(jobs, arguments, out, longest_generation):
                 if worker.is_alive():
                     worker.terminate()
             worker.join(timeout=5)
-            if worker.is_alive():
-                try:
-                    os.killpg(worker.pid, signal.SIGKILL)
-                except ProcessLookupError:
+            # Kill surviving engine descendants even when their worker exited.
+            try:
+                os.killpg(worker.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                if worker.is_alive():
                     worker.kill()
-                worker.join(timeout=5)
+            worker.join(timeout=5)
         signal.signal(signal.SIGTERM, previous_handler)
 
 
@@ -495,6 +508,7 @@ def generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
     from vllm import SamplingParams
 
     started = time.perf_counter()
+    record_event(out, 'engine_startup_started')
     # The engine has to hold the largest budget any benchmark in this run uses.
     model, lora = load_engine(arguments, longest_generation)
     print('Engine health check: generating 16 tokens before the evaluation queue', flush=True)
@@ -511,9 +525,16 @@ def generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
         signal.signal(signal.SIGALRM, previous_handler)
     print('Engine health check passed', flush=True)
     arguments.startup_seconds = time.perf_counter() - started
+    record_event(out, 'generation_started')
     print(f"vLLM engine startup seconds: {arguments.startup_seconds:.3f}", flush=True)
 
     records = []
+    if getattr(arguments, 'continuous_queue', False):
+        records = generate_continuous(model.llm_engine, jobs, arguments, out, tokenizer,
+                                      eos_ids, open_id, close_id, lora)
+        record_event(out, 'generation_finished', responses=len(records))
+        finish_timing(arguments, started, records, "vllm", "cuda")
+        return records
     with (out / RECORDS).open("w") as stream:
         batch_size = arguments.batch_size
         for start in range(0, len(jobs), batch_size):
@@ -531,8 +552,41 @@ def generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
                 stream.write(json.dumps(record) + "\n")
             stream.flush()  # a crash late in a long run keeps what it earned
             print(f"{start + len(batch)}/{len(jobs)}", flush=True)
+    record_event(out, 'generation_finished', responses=len(records))
     finish_timing(arguments, started, records, "vllm", "cuda")
     return records
+
+
+def generate_continuous(engine, jobs, arguments, out, tokenizer,
+                        eos_ids, open_id, close_id, lora):
+    """One pending queue, no Python-side batch barriers; durable per-answer output."""
+    from vllm import SamplingParams
+    from vllm.sampling_params import RequestOutputKind
+    wanted = {f'eval-{index}': job for index, job in enumerate(jobs)}
+    for request_id, job in wanted.items():
+        settings = SamplingParams(max_tokens=token_cap(job['row']['dataset'], arguments),
+            seed=job['seed'], stop_token_ids=list(eos_ids),
+            output_kind=RequestOutputKind.FINAL_ONLY, **SAMPLING)
+        engine.add_request(request_id, {'prompt_token_ids': job['ids']}, settings, lora_request=lora)
+    completed = {}
+    with (out / RECORDS).open('w') as stream:
+        while engine.has_unfinished_requests():
+            for output in engine.step():
+                if not output.finished:
+                    continue
+                request_id = output.request_id
+                if request_id not in wanted or request_id in completed:
+                    raise RuntimeError('Unknown or duplicate continuous-queue answer')
+                record = to_record(wanted[request_id], output, lora, tokenizer,
+                                   eos_ids, open_id, close_id)
+                completed[request_id] = record
+                stream.write(json.dumps(record) + '\n')
+                stream.flush()
+                if len(completed) % 20 == 0 or len(completed) == len(jobs):
+                    print(f'Continuous queue: {len(completed)}/{len(jobs)} completed', flush=True)
+    if set(completed) != set(wanted):
+        raise RuntimeError('Continuous queue lost generation jobs')
+    return [completed[request_id] for request_id in wanted]
 
 
 def generate_transformers(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id):
@@ -773,6 +827,7 @@ def save_results(out, arguments, suite, grading, results, failed, caps):
         "tensor_parallel_size": getattr(arguments, "tensor_parallel_size", 1),
         "data_parallel_size": getattr(arguments, "data_parallel_size", 1),
         "batch_size": getattr(arguments, "batch_size", BATCH),
+        "continuous_queue": getattr(arguments, "continuous_queue", False),
         "max_num_seqs": getattr(arguments, "max_num_seqs", 32),
         "max_num_batched_tokens": getattr(arguments, "max_num_batched_tokens", 2048),
         "gpu_memory_utilization": getattr(arguments, "gpu_memory_utilization", 0.70),
