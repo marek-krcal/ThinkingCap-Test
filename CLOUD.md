@@ -37,8 +37,9 @@ Linux environment instead of directly on the development Mac.
 ## Kaggle
 
 1. Push this repository to your own GitHub fork or branch.
-2. Choose the portable Transformers runner (`cloud/kaggle`) or the tested CUDA
-   vLLM runner (`cloud/kaggle-vllm`). vLLM is preferred for actual evaluations.
+2. Use the tested CUDA vLLM runner (`cloud/kaggle-vllm`). The inefficient
+   one-response-at-a-time Transformers Kaggle runner has been removed;
+   Transformers remains available for local CPU/MPS smoke tests.
 3. Edit the chosen runner's repository/ref defaults to your public fork and
    exact tested commit, or set `THINKINGCAP_REPO` and `THINKINGCAP_REF` in its runtime.
    While reviewing this PR, select `feature/kaggle-evaluation`, not the old `main`.
@@ -67,8 +68,7 @@ your laptop do **not** automatically become Kaggle environment variables):
 | `THINKINGCAP_TIMEOUT_SECONDS` | `7200` | Total wall-clock allowance, including setup |
 
 Do not combine full mode with a question limit. These sample and parallelism
-settings are for the vLLM runner; the separate Transformers runner retains its
-original full-mode default of eight samples. Outputs go under
+settings are for the vLLM runner. Outputs go under
 `/kaggle/working/runs/evaluation` for the vLLM runner.
 
 Credentials stay outside Git: the Kaggle CLI supports the user's access token
