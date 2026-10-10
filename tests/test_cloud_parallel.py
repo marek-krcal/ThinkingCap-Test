@@ -5,7 +5,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from evaluate import load_engine, parse_arguments, shard_jobs, merge_shard_records
+from evaluate import load_engine, parse_arguments, shard_jobs, merge_shard_records, graph_configuration
 
 
 class ParallelConfiguration(unittest.TestCase):
@@ -81,6 +81,24 @@ class ParallelConfiguration(unittest.TestCase):
         with patch.dict('sys.modules', modules), self.assertRaises(RuntimeError):
             load_engine(args, 8192)
         engine.assert_not_called()
+
+    def test_decode_graphs_disable_eager_without_enabling_compilation(self):
+        engine = Mock()
+        modules = {'vllm': SimpleNamespace(LLM=engine),
+                   'vllm.lora.request': SimpleNamespace(LoRARequest=Mock()),
+                   'torch': SimpleNamespace(cuda=SimpleNamespace(device_count=lambda: 1))}
+        args = SimpleNamespace(adapter=None, dtype='half', tensor_parallel_size=1,
+                               model='test', revision='pinned', seed=9001,
+                               cuda_graphs=True, max_num_seqs=64)
+        with patch.dict('sys.modules', modules):
+            load_engine(args, 8192)
+        self.assertFalse(engine.call_args.kwargs['enforce_eager'])
+        config = engine.call_args.kwargs['compilation_config']
+        self.assertEqual(config['mode'], 0)
+        self.assertEqual(config['cudagraph_mode'], 'FULL_DECODE_ONLY')
+        self.assertEqual(config['cudagraph_capture_sizes'], [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64])
+        self.assertEqual(config['max_cudagraph_capture_size'], 64)
+        self.assertIsNone(graph_configuration(SimpleNamespace(cuda_graphs=False)))
 
     def test_invalid_scheduler_settings_rejected(self):
         for flag, value in (('--max-num-seqs', '0'),

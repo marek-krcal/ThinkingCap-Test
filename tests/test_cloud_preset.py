@@ -26,6 +26,7 @@ class CloudPresetTests(unittest.TestCase):
                                     ('--samples', str(samples))]:
                     self.assertEqual(cmd[cmd.index(flag)+1], value)
                 self.assertIn('--continuous-queue', cmd)
+                self.assertIn('--cuda-graphs', cmd)
                 self.assertEqual('--smoke' in cmd, '--smoke' in coverage)
                 self.assertEqual('--limit-per-benchmark' in cmd, '--limit-per-benchmark' in coverage)
 

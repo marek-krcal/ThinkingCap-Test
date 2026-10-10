@@ -30,7 +30,7 @@ def evaluation_command(args):
                '--dtype', 'half', '--tensor-parallel-size', '1',
                '--data-parallel-size', '2', '--continuous-queue',
                '--max-num-seqs', '64', '--max-num-batched-tokens', '2048',
-               '--gpu-memory-utilization', '0.70']
+               '--gpu-memory-utilization', '0.70', '--cuda-graphs']
     if args.adapter:
         command += ['--adapter', args.adapter]
     if args.limit_per_benchmark:

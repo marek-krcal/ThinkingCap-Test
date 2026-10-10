@@ -104,6 +104,7 @@ pathlib.Path('/kaggle/working/run-config.json').write_text(json.dumps({
     'repo': repo, 'ref': ref, 'commit': commit, 'mode': mode, 'samples': samples,
     'limit_per_benchmark': limit, 'tensor_parallel_size': tp, 'data_parallel_size': dp,
     'dtype': 'half', 'max_num_seqs': 64, 'continuous_queue': True,
+    'enforce_eager': False, 'cudagraph_mode': 'FULL_DECODE_ONLY', 'compilation_mode': 0,
     'timeout_seconds': timeout}, indent=2))
 run('installer_bootstrap', [sys.executable, '-m', 'pip', 'install', '-q', 'uv'])
 run('python_environment', ['uv', 'venv', '--python', '3.12', str(scratch / 'vllm-env')])
@@ -132,13 +133,15 @@ def monitor_gpus():
             stats = subprocess.check_output([
                 'nvidia-smi', '--query-gpu=index,utilization.gpu,memory.used,memory.total',
                 '--format=csv,noheader,nounits'], text=True, timeout=10)
-            print('GPU index, utilization %, memory used MiB, total MiB:\n' + stats,
-                  flush=True)
+            # Preserve one-second measurements without flooding the notebook log.
+            if int(time.time()) % 15 == 0:
+                print('GPU index, utilization %, memory used MiB, total MiB:\n' + stats,
+                      flush=True)
             with pathlib.Path('/kaggle/working/gpu-utilization.jsonl').open('a') as stream:
                 stream.write(json.dumps({'time': time.time(), 'stats': stats}) + '\n')
         except (OSError, subprocess.SubprocessError) as error:
             print('GPU telemetry unavailable:', error, flush=True)
-        stopped.wait(15)
+        stopped.wait(1)
 
 monitor = threading.Thread(target=monitor_gpus, daemon=True)
 monitor.start()

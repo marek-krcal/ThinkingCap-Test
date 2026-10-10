@@ -163,6 +163,8 @@ def parse_arguments():
                         help="Number of jobs queued per vLLM generate call")
     parser.add_argument("--continuous-queue", action="store_true",
                         help="Queue all jobs on the engine and save each finished answer immediately")
+    parser.add_argument("--cuda-graphs", action="store_true",
+                        help="Research trial: capture decode-only CUDA graphs without torch.compile")
     parser.add_argument("--max-num-seqs", type=int, default=32,
                         help="Maximum concurrently active vLLM sequences")
     parser.add_argument("--max-num-batched-tokens", type=int, default=2048)
@@ -641,6 +643,17 @@ def generate_transformers(jobs, arguments, out, tokenizer, eos_ids, open_id, clo
     return records
 
 
+def graph_configuration(arguments):
+    """Keep compilation out of the controlled decode-graph comparison."""
+    if not getattr(arguments, 'cuda_graphs', False):
+        return None
+    maximum = getattr(arguments, 'max_num_seqs', 32)
+    sizes = sorted({size for size in [1, 2, 4] + list(range(8, maximum + 1, 8)) + [maximum]
+                    if size <= maximum})
+    return {'mode': 0, 'cudagraph_mode': 'FULL_DECODE_ONLY',
+            'cudagraph_capture_sizes': sizes, 'max_cudagraph_capture_size': maximum}
+
+
 def load_engine(arguments, longest_generation):
     """Build the vLLM engine, registering the adapter when there is one."""
     # FlashInfer's sampler compiles a kernel on the fly and needs nvcc, which
@@ -657,6 +670,9 @@ def load_engine(arguments, longest_generation):
     import torch
     if torch.cuda.device_count() < arguments.tensor_parallel_size:
         raise RuntimeError("Not enough CUDA GPUs for requested tensor parallel size")
+    graphs = graph_configuration(arguments)
+    print('CUDA graph configuration:', graphs, flush=True)
+    graph_options = {'compilation_config': graphs} if graphs else {}
     model = LLM(model=arguments.model, revision=arguments.revision,
                 tokenizer_revision=arguments.revision,
                 dtype=dtype,
@@ -666,11 +682,11 @@ def load_engine(arguments, longest_generation):
                 max_num_seqs=getattr(arguments, 'max_num_seqs', 32),
                 max_num_batched_tokens=getattr(arguments, 'max_num_batched_tokens', 2048),
                 enable_chunked_prefill=True,
-                enforce_eager=True,
+                enforce_eager=graphs is None,
                 disable_custom_all_reduce=True,
                 disable_log_stats=False,
                 enable_prefix_caching=False, generation_config="vllm", seed=arguments.seed,
-                enable_lora=rank is not None, max_lora_rank=rank or 16)
+                enable_lora=rank is not None, max_lora_rank=rank or 16, **graph_options)
     if not arguments.adapter:
         return model, None
     lora = LoRARequest("candidate", 1, str(Path(arguments.adapter).resolve()))
@@ -831,7 +847,8 @@ def save_results(out, arguments, suite, grading, results, failed, caps):
         "max_num_seqs": getattr(arguments, "max_num_seqs", 32),
         "max_num_batched_tokens": getattr(arguments, "max_num_batched_tokens", 2048),
         "gpu_memory_utilization": getattr(arguments, "gpu_memory_utilization", 0.70),
-        "enforce_eager": True,
+        "enforce_eager": not getattr(arguments, "cuda_graphs", False),
+        "compilation_config": graph_configuration(arguments),
         "generation": getattr(arguments, "generation_stats", None),
         "max_tokens": caps, "max_model_len": max(caps.values()) + PROMPT_BUDGET,
         "sandbox": {"mode": grading["mode"], "why": grading["why"]},
