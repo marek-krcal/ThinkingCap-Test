@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from cloud.verify_eval import verify, compare_development_slice
+from cloud.correct_truncation import correct
 
 
 class CompletionAudit(unittest.TestCase):
@@ -53,6 +54,32 @@ class CompletionAudit(unittest.TestCase):
     def test_grader_errors_fail(self):
         self.records[0]['grading_error'] = 'test failure'
         self.assertIn('Missing grade or grader error', self.check()['errors'])
+
+    def test_truncated_correct_answer_fails(self):
+        self.records[0]['truncated'] = True
+        self.assertIn('Truncated answer counted correct', self.check()['errors'])
+
+    def test_correction_preserves_raw_answers_and_generation_metadata(self):
+        for q in self.questions:
+            q['grader'] = 'ifeval'
+        raw = ''.join(json.dumps(q) + '\n' for q in self.questions).encode()
+        (self.root / 'questions.jsonl').write_bytes(raw)
+        self.results['cohort_sha256'] = hashlib.sha256(raw).hexdigest()
+        self.records[0]['truncated'] = True
+        self.check()
+        original_records = (self.root / 'records.jsonl').read_bytes()
+        original_results = (self.root / 'results.json').read_bytes()
+        out = self.root / 'corrected'
+        detail = correct(self.root, out, self.root / 'questions.jsonl')
+        amended = json.loads((out / 'results.json').read_text())
+        self.assertEqual(detail['correct_to_wrong_ids'], ['0'])
+        self.assertEqual(detail['regenerated_answers'], 0)
+        self.assertEqual(amended['generation'], self.results['generation'])
+        self.assertEqual(amended['results']['svamp']['accuracy'], .75)
+        self.assertEqual((self.root / 'records.jsonl').read_bytes(), original_records)
+        self.assertEqual((self.root / 'results.json').read_bytes(), original_results)
+        with self.assertRaises(FileExistsError):
+            correct(self.root, out, self.root / 'questions.jsonl')
 
     def test_score_or_token_cap_change_fails(self):
         self.results['results']['svamp']['accuracy'] = .5

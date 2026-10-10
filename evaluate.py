@@ -706,6 +706,8 @@ def grade_one(row, record, checkers):
     if grader == "bfcl":
         return grade_call(row, record["response"], *checkers["bfcl"], truncated=record["truncated"])
     if grader == "ifeval":
+        if record["truncated"]:
+            return False, "truncated"
         return checkers["ifeval"](row, record["response"])
     raise ValueError(f"Unknown grader: {grader!r}")
 

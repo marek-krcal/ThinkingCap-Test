@@ -99,6 +99,8 @@ def verify(out, questions, expected_questions=2759, samples=1):
                 'Answer seed mismatch')
         require(type(record.get('correct')) is bool and not record.get('grading_error'),
                 'Missing grade or grader error')
+        require(not (record.get('truncated') and record.get('correct') is True),
+                'Truncated answer counted correct')
         require(isinstance(record.get('text'), str) and bool(record['text']), 'Missing answer text')
         require(0 < record['output_tokens'] <= results['max_tokens'][record['dataset']],
                 'Output token count exceeds cap')
