@@ -23,18 +23,14 @@ timings = {}
 # Fresh, bounded run on any date. Defaults to a 30-question plumbing smoke test.
 # Edit these defaults before pushing, or set THINKINGCAP_* in the runtime.
 repo = os.environ.get('THINKINGCAP_REPO', 'https://github.com/marek-krcal/ThinkingCap-Test.git')
-ref = os.environ.get('THINKINGCAP_REF', 'main')  # exact commit recommended
+ref = os.environ.get('THINKINGCAP_REF', 'feature/kaggle-evaluation')  # exact commit recommended
 mode = os.environ.get('THINKINGCAP_MODE', 'smoke')
 samples = int(os.environ.get('THINKINGCAP_SAMPLES', '1'))
 limit = int(os.environ.get('THINKINGCAP_LIMIT_PER_BENCHMARK', '0'))
-tp = int(os.environ.get('THINKINGCAP_TENSOR_PARALLEL_SIZE', '2'))
-dp = int(os.environ.get('THINKINGCAP_DATA_PARALLEL_SIZE', '1'))
-batch = int(os.environ.get('THINKINGCAP_BATCH_SIZE', '512'))
+tp, dp = 1, 2  # measured two-T4 recipe; not runtime configuration
 timeout = int(os.environ.get('THINKINGCAP_TIMEOUT_SECONDS', '7200'))
-if mode not in ('smoke', 'full') or min(samples, tp, dp, batch, timeout) < 1 or limit < 0:
+if mode not in ('smoke', 'full') or samples not in (1, 2, 4, 8) or timeout < 1 or limit not in (0, 100, 200):
     raise ValueError('Invalid run configuration')
-if dp > 1 and tp != 1:
-    raise ValueError('Offline data parallelism requires tensor parallel size 1')
 if mode == 'full' and limit:
     raise ValueError('Full coverage and a development question limit are mutually exclusive')
 hard_stop = time.time() + timeout
@@ -107,7 +103,8 @@ commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=Tr
 pathlib.Path('/kaggle/working/run-config.json').write_text(json.dumps({
     'repo': repo, 'ref': ref, 'commit': commit, 'mode': mode, 'samples': samples,
     'limit_per_benchmark': limit, 'tensor_parallel_size': tp, 'data_parallel_size': dp,
-    'batch_size': batch, 'timeout_seconds': timeout}, indent=2))
+    'dtype': 'half', 'max_num_seqs': 64, 'continuous_queue': True,
+    'timeout_seconds': timeout}, indent=2))
 run('installer_bootstrap', [sys.executable, '-m', 'pip', 'install', '-q', 'uv'])
 run('python_environment', ['uv', 'venv', '--python', '3.12', str(scratch / 'vllm-env')])
 python = str(scratch / 'vllm-env/bin/python')
@@ -147,13 +144,13 @@ monitor = threading.Thread(target=monitor_gpus, daemon=True)
 monitor.start()
 try:
     command = [python, 'cloud/run_eval.py', '--out', '/kaggle/working/runs/evaluation',
-        '--backend', 'vllm', '--dtype', 'half', '--samples', str(samples),
-        '--tensor-parallel-size', str(tp), '--data-parallel-size', str(dp),
-        '--batch-size', str(batch)]
+        '--samples', str(samples)]
     if limit:
         command += ['--limit-per-benchmark', str(limit)]
     elif mode == 'full':
         command.append('--full')
+    else:
+        command.append('--smoke')
     run('evaluation_total', command, root, timeout=max(1, hard_stop - time.time()))
 finally:
     stopped.set()

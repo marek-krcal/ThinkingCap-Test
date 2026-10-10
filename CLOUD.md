@@ -60,15 +60,14 @@ your laptop do **not** automatically become Kaggle environment variables):
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `THINKINGCAP_MODE` | `smoke` | `full` selects all 2,759 questions |
-| `THINKINGCAP_SAMPLES` | `1` | Set `8` for the original official evaluation |
-| `THINKINGCAP_LIMIT_PER_BENCHMARK` | `0` | `10` gives 40 answers; `100` gives 400, with samples=1 |
-| `THINKINGCAP_TENSOR_PARALLEL_SIZE` | `2` | One engine spread across both T4s |
-| `THINKINGCAP_DATA_PARALLEL_SIZE` | `1` | Set `2` with TP=1 for two independent worker engines |
-| `THINKINGCAP_BATCH_SIZE` | `512` | Jobs queued per generation call, not concurrent sequences |
+| `THINKINGCAP_SAMPLES` | `1` | Allowed: `1`, `2`, `4`, `8` answers per question |
+| `THINKINGCAP_LIMIT_PER_BENCHMARK` | `0` | Allowed: `100` (400 questions), `200` (800 questions), or `0` (mode selects smoke/full) |
 | `THINKINGCAP_TIMEOUT_SECONDS` | `7200` | Total wall-clock allowance, including setup |
 
-Do not combine full mode with a question limit. These sample and parallelism
-settings are for the vLLM runner. Outputs go under
+Do not combine full mode with a question limit. Hardware is deliberately fixed:
+**FP16, TP1, DP2, continuous queue, 64 active answers per GPU**, 2048 prefill
+tokens and 70% GPU memory target. Old parallelism/batch environment variables
+are no longer read. Outputs go under
 `/kaggle/working/runs/evaluation` for the vLLM runner.
 
 Credentials stay outside Git: the Kaggle CLI supports the user's access token
@@ -82,15 +81,15 @@ Always evaluate the base and candidate with the same dtype and backend. Only T4
 has been validated end-to-end here; these settings are not a blanket P100 guarantee.
 
 The vLLM runner records both GPU utilization and memory every 15 seconds.
-Tensor parallelism can be slower than one GPU for a small model; compare
-generation-only time and output-token counts.
-Parallel size and queue batch size are recorded with scores because outputs can
-change with these settings. Disposable environments, source and model downloads
+The fixed two-GPU recipe was measured on 400 questions: generation 331.94s,
+1072.23 output tokens/s, versus 416.72 tokens/s for a single-GPU chunked queue.
+This is one trial, not a guaranteed speedup; seeds do not guarantee identical
+answers across scheduling configurations. Settings are recorded with scores.
+Disposable environments, source and model downloads
 live under `/kaggle/temp`, not the archived `/kaggle/working` output tree.
-The memory-safe scheduler activates at most 32 sequences and 2048 prefill tokens,
-with 70% GPU memory allocation. Queuing 512 requests does not mean running 512
-simultaneously. Eager mode, disabled custom all-reduce and disabled P2P are the
-conservative settings that completed the observed T4 run, not tuned optima.
+Concurrency means active sequences per GPU, not submitted queue size. The
+controller queues all selected answers across its two workers without batch
+barriers. Eager mode remains fixed; CUDA graphs have not been measured here.
 
 ### Environment, caching and outputs
 
@@ -183,18 +182,24 @@ For a model that fits on one GPU, the shared evaluator can use one controller
 with two independent vLLM worker engines:
 
 ```sh
-python cloud/run_eval.py --out runs/dp-400 --backend vllm --dtype half \
-  --limit-per-benchmark 100 --samples 1 --data-parallel-size 2 --batch-size 128
+python cloud/run_eval.py --out runs/dp-400 --limit-per-benchmark 100 --samples 1
+python cloud/run_eval.py --out runs/dp-800 --limit-per-benchmark 200 --samples 2
+python cloud/run_eval.py --out runs/dp-full --full --samples 4
 ```
 
 This is an offline multiprocessing controller, not the vLLM API-server DP mode.
 It launches the same worker function on each GPU, using fresh spawned processes
 and GPU visibility isolation. Jobs retain their original IDs, sample indices,
 and seeds; shard records are merged into one `records.jsonl` and graded once.
-Each worker keeps batch-level records under `shards/` for failure diagnostics.
-Tensor parallelism must remain 1 in this mode. Full x1 uses `--full --samples 1`;
-official full x8 uses `--full --samples 8`. DP has CPU configuration/merge tests
-but is not the backend used for the successful historical TP2 full run.
+Each worker saves answers as they finish under `shards/` for failure diagnostics.
+Full x1 uses `--full --samples 1`; official full x8 uses `--full --samples 8`.
+Omitting all selection flags also means full coverage, with one answer by default;
+use `--smoke` explicitly for the 30-question plumbing set. Model, adapter,
+benchmark selection and output path remain configurable. Hardware flags are not
+accepted by this convenience runner; `evaluate.py` retains low-level research
+controls and local CPU/MPS support. Colab calls it directly for its single GPU.
+DP2 continuous queue is validated on the 400-question cohort; the historical
+full evaluation used TP2, so full DP2 coverage is not yet measured.
 
 ## Safety and limits
 
@@ -207,6 +212,6 @@ model-written Python. The measured run used resource limits only because bwrap
 was unavailable. Prefer `--sandbox bwrap` where supported and avoid exposing
 credentials or sensitive files to model-generated code.
 
-Colab and offline DP remain convenience paths, not end-to-end validated GPU
-configurations. Optimization (scheduler tuning, CUDA graphs, continuous queueing
-and finer utilization telemetry) is deliberately deferred from this setup PR.
+Colab remains a convenience path, not an end-to-end validated GPU configuration.
+The measured continuous-queue DP2 implementation is included in this PR;
+the experimental campaign harness and CUDA-graph experiments remain separate.
