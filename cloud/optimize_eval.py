@@ -80,6 +80,9 @@ def choose(rows):
 
 
 def main():
+    def stop_campaign(signum, frame):
+        raise SystemExit('Campaign terminated; cleaning up the active profile')
+    signal.signal(signal.SIGTERM, stop_campaign)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--timeout-seconds', type=int, default=7200)
