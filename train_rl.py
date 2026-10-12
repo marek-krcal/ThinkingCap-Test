@@ -106,7 +106,9 @@ def main():
         model.enable_input_require_grads()
         optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
                                       lr=args.learning_rate, weight_decay=0)
-        scaler = torch.amp.GradScaler('cuda')
+        # Sequence-sum RLOO gradients can be much larger than token-mean SFT
+        # gradients; avoid wasting the short run backing off a 65,536 scale.
+        scaler = torch.amp.GradScaler('cuda', init_scale=128, growth_interval=100)
         emit('model_loaded', trainable_parameters=sum(p.numel() for p in model.parameters() if p.requires_grad))
 
         def score(prompt, completion, grad=True):

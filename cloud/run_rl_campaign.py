@@ -26,6 +26,9 @@ def run(command, timeout, environment=None):
 
 
 def main():
+    def terminate(*unused):
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGTERM, terminate)
     root = Path('/kaggle/working/runs/binary-rl-overfit')
     root.mkdir(parents=True, exist_ok=True)
     summary = {'contaminated_test_overfit': True, 'algorithms': {}}
