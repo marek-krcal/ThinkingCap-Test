@@ -1,9 +1,13 @@
 # First binary-correctness SimPO / RLOO probes
 
-Kaggle `krcalkrcal/thinkingcap-binary-rl-overfit` version 2 ended in ERROR on
+**October 12 follow-up:** evaluation-only version 3 completed both adapters.
+RLOO scored 279/400 versus baseline 261/400; SimPO collapsed to 1/400 after
+CPU completion/format correction. See the completed evaluation audit below.
+No retraining was performed. Both adapters are deliberately test-contaminated.
+
+Historical first attempt: Kaggle `krcalkrcal/thinkingcap-binary-rl-overfit` version 2 ended in ERROR on
 October 12, 2026. **Training succeeded for both algorithms; both requested
-400-question evaluations failed. No benchmark scores or overfitting success
-claim are available.** These are deliberately test-contaminated adapters and
+400-question evaluations failed in that session.** These are deliberately test-contaminated adapters and
 must never be represented as clean benchmark submissions.
 
 Runner `6f3faf0ba2bda360e4003f8ebe72388a45a66ba3`, wrapper `d5648b3`.
@@ -72,15 +76,122 @@ name immediately after enqueue, before the completed request state is removed.
 Missing or mismatched input routes still fail closed. Explicit mismatched
 output adapter IDs remain rejected. Every adapted record records the route
 verification source and adapter ID. All 123 local tests pass, including
-positive/negative routing regression cases. The repaired adapter evaluation
-has not yet been validated in a new GPU session.
+positive/negative routing regression cases. At that point GPU validation
+was pending; version 3 below subsequently validated routing for all 800 answers.
 
-**Remaining work:** evaluation-only rerun of these two saved adapters on the
+**Remaining work at that time:** evaluation-only rerun of these two saved adapters on the
 same 400-question cohort, then compare against the eager baseline, including
 actual sampled training IDs versus other questions. No retraining is required.
 No replacement GPU session was submitted by the terminal monitor, which was
 explicitly instructed not to submit further runs after its one corrective
-replacement. The requested 400-question sanity comparisons remain incomplete.
+replacement. Those pending comparisons were subsequently completed below.
+
+## Completed evaluation-only audit (version 3)
+
+User subsequently authorized testing the saved adapters, with no retraining.
+[Kaggle evaluation](https://www.kaggle.com/code/krcalkrcal/thinkingcap-binary-rl-evaluation)
+version 3 is COMPLETE. Runner `25813716907e20c74e0e32aed2e99686d6252c90`,
+wrapper `cc2e8cd`. Version 1 could not attach failed-kernel outputs and was
+cancelled; version 2 failed on a direct-script import. A private six-file
+adapter dataset and explicit repository import path repaired those issues.
+
+Each adapter produced 400 unique answers with the baseline's identical
+question IDs, per-answer seeds, frozen cohort hash, model revision, sampling,
+caps and grader revisions. All 800 records carry
+`adapter_route_verified_by=engine_request_state`, `adapter_id=1`.
+The campaign summary verifies the original adapter file hashes. Neither
+adapter was changed or trained again.
+
+| Correct answers / 100 | Eager base | SimPO, corrected locally | RLOO |
+| --- | ---: | ---: | ---: |
+| MBPP+ | 51 | 0 | 60 |
+| BFCL (34/33/33 balanced slice) | 76 | 1 | 78 |
+| SVAMP | 79 | 0 | 84 |
+| IFEval | 55 | 0 | 57 |
+| Total / 400 | 261 | 1 | 279 |
+
+RLOO paired outcomes: 36 previously wrong answers became correct; 18 previously
+correct became wrong. On its 16 actually sampled training IDs, base 11/16
+became 14/16 (3 gains, no losses). On the five prompts that produced gradient
+signal, base 3/5 became 5/5. Other 384 IDs improved from 250 to 265 correct.
+This is a short, single-seed contaminated debugging probe, not a clean
+generalization result or proof that RLOO is superior in general.
+
+SimPO: its eight sampled training IDs fell from 5/8 to 0/8; its three
+gradient-signal prompts fell from 2/3 to 0/3. Other 392 fell from 256 to 1.
+350/400 outputs had unbalanced thinking; only one had a nonempty extracted
+final response. Fitting nine preferences for 100 updates therefore did not
+demonstrate successful generation overfitting. Do not extend this recipe
+without diagnosing the degeneration first.
+
+### Completion and grading repair, without GPU regeneration
+
+The original SimPO artifacts reported 394/400 truncated and all-zero scores.
+The evaluator compared the last token only with tokenizer EOS 151645.
+The pinned Qwen model's
+[generation configuration](https://huggingface.co/Qwen/Qwen3-0.6B/blob/c1899de289a04d12100db370d81485cdf75e47ca/generation_config.json)
+also permits EOS 151643. vLLM supplies explicit `finish_reason` and
+`stop_reason`; the legacy evaluator discarded both. The repaired `to_record`
+uses and saves those fields, rejecting unknown completion reasons.
+The new completion/format code passes 131 local regression tests; version 3
+ran the earlier code, so the new metadata path itself is not GPU-tested yet.
+
+Raw GPU artifacts remain unchanged. For this successful FINAL_ONLY run,
+with no abort, stop string or timed generation stop, and context budget
+4096+8192 <=12288, a final output strictly below its cap implies a stop rather
+than length exhaustion. `cloud.recover_stops` explicitly records that
+inference (not observed stop metadata), corrects 370 flags, and conservatively
+retains truncation on exact-cap answers. It regrades unchanged decoded text
+with the pinned local grader sources; 24 answers remain truncated.
+
+Regrading exposed another edge case: malformed thinking produced an empty
+extracted response, which BFCL irrelevance incorrectly accepted as "no tool
+call". `grade_one` now rejects an explicit boundary error before grading.
+Without this guard SimPO spuriously scored 33/400; after it, 1/400. All
+boundary-error records in the base and RLOO artifacts were already wrong,
+so their reported scores are unchanged. No missing final response was
+invented, and no malformed answer was reinterpreted as a final answer.
+
+CPU regrading finished with zero grader errors. NLTK `punkt_tab` data was
+added under the ignored local run folder. The recovery helper refuses local
+execution of model-written MBPP programs without bubblewrap; all SimPO
+program responses reject at parsing, so **none were executed locally**.
+Earlier intermediate corrections (including a missing-NLTK-data failure)
+are not the final report. Final artifacts:
+`runs/kaggle-rl-evaluation-v3/corrected-final/simpo/`.
+
+### Timing, output length and GPU measurements
+
+| Measurement | Eager base | SimPO | RLOO |
+| --- | ---: | ---: | ---: |
+| Global worker generation window | 331.939 s | 693.019 s | 681.631 s |
+| Output tokens | 355,914 | 338,116 | 308,687 |
+| Tokens / global generation second | 1,072.23 | 487.89 | 452.87 |
+| Engine startup (max worker, includes health check) | 12.893 s warm | 160.465 s cold | 14.169 s warm |
+| Adapter evaluation process wall time | not directly comparable | 879.477 s | 735.471 s |
+| Truncated answers | 9 | 24, corrected | 3 |
+
+Generation window is earliest worker `generation_started` to latest worker
+`generation_finished`, excluding model startup and grading; parent timing
+also contains shutdown overhead. LoRA inference is materially slower than
+the unadapted baseline in this trial, despite shorter outputs. This is not a
+matched repeated performance experiment: cold loading, altered trajectory
+lengths and decode tails affect timing. No causal speedup claim is made.
+
+Telemetry aligned to those windows: GPU0/GPU1 mean utilization SimPO
+48.7%/50.8%, RLOO 46.5%/46.0%; peak memory 11,329/11,327 MiB for both.
+This run retained approximately **15-second**, not one-second, telemetry
+(46/45 samples per GPU), so these means are coarse. Both GPUs were used.
+
+Dependency installation 70.356 s, import check 13.606 s; both evaluations
+together 1,615.964 s (~26m56s), with total charged session delta ~28m39s.
+Post-run quota: 7,940.416 / 21,600 seconds used (2h12m20s / 6h, 36.8%),
+zero reserved, ~3h47m40s remaining; refresh October 17 00:00 UTC.
+
+Raw results, records, shard events, setup timing, telemetry and logs are under
+`runs/kaggle-rl-evaluation-v3/`; adapter and training artifacts remain under
+`runs/kaggle-binary-rl-v2/`. No environments or base weights were downloaded.
+No additional GPU run or longer training is authorized or submitted by this audit.
 
 ## Artifacts and quota
 

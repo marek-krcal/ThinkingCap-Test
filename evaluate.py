@@ -733,6 +733,17 @@ def to_record(job, output, lora, tokenizer, eos_ids, open_id, close_id, verified
         raise ValueError("Adapter routing mismatch")
     record = record_from_tokens(job, list(output.outputs[0].token_ids), tokenizer,
                                 eos_ids, open_id, close_id)
+    # vLLM can stop on the model's EOS IDs as well as our explicit tokenizer
+    # stop IDs. The tokenizer's single EOS is not an exhaustive stop policy.
+    completion = output.outputs[0]
+    finish_reason = getattr(completion, 'finish_reason', None)
+    if finish_reason is not None:
+        if finish_reason not in ('stop', 'length', 'abort'):
+            raise ValueError(f'Unknown vLLM finish reason: {finish_reason!r}')
+        record.update(finish_reason=finish_reason,
+                      stop_reason=getattr(completion, 'stop_reason', None),
+                      truncated=finish_reason != 'stop',
+                      completion_verified_by='vllm_finish_reason')
     if lora is not None:
         record['adapter_route_verified_by'] = 'engine_request_state' if used is None else 'output_metadata'
         record['adapter_id'] = lora.lora_int_id
@@ -769,6 +780,10 @@ def grade_all(questions, records, grading):
 
 
 def grade_one(row, record, checkers):
+    # An empty response extracted from malformed thinking is not a valid
+    # "no tool call" answer for BFCL irrelevance (nor a valid final answer).
+    if record.get('boundary_error'):
+        return False, record['boundary_error']
     grader = row["grader"]
     if grader == "numeric":
         return grade_numeric(record["text"], row["answer"], record["truncated"])
