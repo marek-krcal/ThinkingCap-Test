@@ -153,6 +153,8 @@ try:
         command.append('--smoke')
     if os.environ.get('THINKINGCAP_BINARY_RL') == '1':
         command = [python, 'cloud/run_rl_campaign.py']
+    if os.environ.get('THINKINGCAP_REEVAL_BINARY_RL') == '1':
+        command = [python, 'cloud/reevaluate_rl.py']
     run('evaluation_total', command, root, timeout=max(1, hard_stop - time.time()))
 finally:
     stopped.set()
