@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import signal
+import shutil
 import sys
 import time
 
@@ -16,6 +17,17 @@ EXPECTED = {
 
 def find_adapter(inputs, algorithm):
     candidates = list(inputs.rglob(f'runs/binary-rl-overfit/{algorithm}/training/adapter/adapter_model.safetensors'))
+    # Failed Kaggle kernels cannot be attached as sources. A private dataset
+    # with only the small saved adapters is the portable fallback.
+    for weights in inputs.rglob(f'{algorithm}-adapter_model.safetensors'):
+        if hashlib.sha256(weights.read_bytes()).hexdigest() != EXPECTED[algorithm]:
+            continue
+        destination = Path('/kaggle/temp/thinkingcap/saved-adapters')/algorithm/'adapter'
+        destination.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(weights, destination/'adapter_model.safetensors')
+        shutil.copyfile(weights.parent/f'{algorithm}-adapter_config.json', destination/'adapter_config.json')
+        shutil.copyfile(weights.parent/f'{algorithm}-training-summary.json', destination.parent/'training-summary.json')
+        candidates.append(destination/'adapter_model.safetensors')
     matches = [p for p in candidates if hashlib.sha256(p.read_bytes()).hexdigest() == EXPECTED[algorithm]]
     if len(matches) != 1:
         raise RuntimeError(f'Expected exactly one hash-verified saved {algorithm} adapter; got {len(matches)}')
