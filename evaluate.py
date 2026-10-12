@@ -563,11 +563,21 @@ def generate_continuous(engine, jobs, arguments, out, tokenizer,
     from vllm import SamplingParams
     from vllm.sampling_params import RequestOutputKind
     wanted = {f'eval-{index}': job for index, job in enumerate(jobs)}
+    verified_routes = set()
     for request_id, job in wanted.items():
         settings = SamplingParams(max_tokens=token_cap(job['row']['dataset'], arguments),
             seed=job['seed'], stop_token_ids=list(eos_ids),
             output_kind=RequestOutputKind.FINAL_ONLY, **SAMPLING)
         engine.add_request(request_id, {'prompt_token_ids': job['ids']}, settings, lora_request=lora)
+        if lora is not None:
+            # vLLM 0.11.2 V1 omits lora_request from RequestOutput. Verify the
+            # actual processed input state instead, before step() removes it.
+            processor = getattr(engine, 'output_processor', None)
+            state = getattr(processor, 'request_states', {}).get(request_id)
+            name = getattr(lora, 'lora_name', getattr(lora, 'name', None))
+            if state is None or name is None or state.lora_name != name:
+                raise ValueError('Adapter routing mismatch in engine request state')
+            verified_routes.add(request_id)
     completed = {}
     with (out / RECORDS).open('w') as stream:
         while engine.has_unfinished_requests():
@@ -578,7 +588,7 @@ def generate_continuous(engine, jobs, arguments, out, tokenizer,
                 if request_id not in wanted or request_id in completed:
                     raise RuntimeError('Unknown or duplicate continuous-queue answer')
                 record = to_record(wanted[request_id], output, lora, tokenizer,
-                                   eos_ids, open_id, close_id)
+                                   eos_ids, open_id, close_id, request_id in verified_routes)
                 completed[request_id] = record
                 stream.write(json.dumps(record) + '\n')
                 stream.flush()
@@ -715,13 +725,18 @@ def build_jobs(questions, tokenizer, arguments):
     return jobs
 
 
-def to_record(job, output, lora, tokenizer, eos_ids, open_id, close_id):
+def to_record(job, output, lora, tokenizer, eos_ids, open_id, close_id, verified_route=False):
     used = output.lora_request
-    wrong_route = (used is not None) if lora is None else (used is None or used.lora_int_id != 1)
+    wrong_route = (used is not None) if lora is None else (
+        (used is None and not verified_route) or (used is not None and used.lora_int_id != lora.lora_int_id))
     if wrong_route:
         raise ValueError("Adapter routing mismatch")
-    return record_from_tokens(job, list(output.outputs[0].token_ids), tokenizer,
-                              eos_ids, open_id, close_id)
+    record = record_from_tokens(job, list(output.outputs[0].token_ids), tokenizer,
+                                eos_ids, open_id, close_id)
+    if lora is not None:
+        record['adapter_route_verified_by'] = 'engine_request_state' if used is None else 'output_metadata'
+        record['adapter_id'] = lora.lora_int_id
+    return record
 
 
 def record_from_tokens(job, tokens, tokenizer, eos_ids, open_id, close_id):

@@ -8,10 +8,46 @@ import unittest
 from unittest.mock import patch
 
 from cloud.run_eval import parse_arguments, evaluation_command
-from evaluate import generate_continuous
+from evaluate import generate_continuous, to_record
 
 
 class CloudPresetTests(unittest.TestCase):
+    def test_v1_missing_output_adapter_metadata_needs_verified_route(self):
+        lora = SimpleNamespace(lora_int_id=1, lora_name='candidate')
+        output = SimpleNamespace(lora_request=None, outputs=[SimpleNamespace(token_ids=[1])])
+        with patch('evaluate.record_from_tokens', return_value={}):
+            with self.assertRaises(ValueError):
+                to_record({}, output, lora, None, set(), 1, 2)
+            self.assertEqual(to_record({}, output, lora, None, set(), 1, 2, True)['adapter_id'], 1)
+            output.lora_request = SimpleNamespace(lora_int_id=2)
+            with self.assertRaises(ValueError):
+                to_record({}, output, lora, None, set(), 1, 2, True)
+
+    def test_continuous_adapter_route_checked_at_engine_input(self):
+        class Engine:
+            def __init__(self, name):
+                self.output_processor = SimpleNamespace(request_states={})
+                self.name = name
+            def add_request(self, request_id, prompt, settings, lora_request):
+                self.output_processor.request_states[request_id] = SimpleNamespace(lora_name=self.name)
+            def has_unfinished_requests(self):
+                return bool(self.output_processor.request_states)
+            def step(self):
+                self.output_processor.request_states.clear()
+                return [SimpleNamespace(request_id='eval-0', finished=True, lora_request=None,
+                                         outputs=[SimpleNamespace(token_ids=[1])])]
+        modules = {'vllm': SimpleNamespace(SamplingParams=lambda **kw: kw),
+                   'vllm.sampling_params': SimpleNamespace(RequestOutputKind=SimpleNamespace(FINAL_ONLY='final'))}
+        jobs = [{'row': {'dataset': 'svamp'}, 'seed': 42, 'ids': [2]}]
+        lora = SimpleNamespace(lora_int_id=1, lora_name='candidate')
+        with tempfile.TemporaryDirectory() as directory, patch.dict('sys.modules', modules), patch('evaluate.record_from_tokens', return_value={}):
+            records = generate_continuous(Engine('candidate'), jobs, SimpleNamespace(max_tokens=None),
+                         Path(directory), None, {1}, 2, 3, lora)
+            self.assertEqual(records[0]['adapter_route_verified_by'], 'engine_request_state')
+            with self.assertRaises(ValueError):
+                generate_continuous(Engine('other'), jobs, SimpleNamespace(max_tokens=None),
+                         Path(directory), None, {1}, 2, 3, lora)
+
     def args(self, extra):
         with patch('sys.argv', ['run_eval.py'] + extra):
             return parse_arguments()
