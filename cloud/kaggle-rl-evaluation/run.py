@@ -2,7 +2,7 @@
 import os
 import urllib.request
 
-COMMIT = 'b304e79b9d2ad07ae97bd2b799fb54f57cc39852'
+COMMIT = '4fa4a4604152c01de3e97567cba06ec788227fd1'
 os.environ.update(THINKINGCAP_REF=COMMIT, THINKINGCAP_MODE='smoke',
                   THINKINGCAP_REEVAL_BINARY_RL='1', THINKINGCAP_BINARY_RL='0',
                   THINKINGCAP_TIMEOUT_SECONDS='2700')
