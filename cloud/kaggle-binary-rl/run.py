@@ -2,7 +2,7 @@
 import os
 import urllib.request
 
-COMMIT = '2a905b1d8d047fbd9d815b817c7aa80aa6880166'
+COMMIT = '6f3faf0ba2bda360e4003f8ebe72388a45a66ba3'
 os.environ.update(THINKINGCAP_REF=COMMIT, THINKINGCAP_MODE='smoke',
                   THINKINGCAP_BINARY_RL='1', THINKINGCAP_TIMEOUT_SECONDS='5400')
 url = ('https://raw.githubusercontent.com/marek-krcal/ThinkingCap-Test/'

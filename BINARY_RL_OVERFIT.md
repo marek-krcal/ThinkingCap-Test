@@ -57,9 +57,14 @@ grader errors. A short sanity run is not a statistical ranking of algorithms.
 
 ## Local verification / cloud execution
 
-120 CPU tests passed, including exact objective derivatives, causal completion
+121 CPU tests passed, including exact objective derivatives, causal completion
 mask boundaries and a tiny Qwen3 LoRA forward/backward with sliced logits.
 Local numerical smoke tests require no full model download or GPU.
+
+The first cloud launch was cancelled before optimizer updates after startup
+logs exposed Transformers restoring Qwen's generation defaults. Explicit
+generation-call overrides now enforce temperature 1 / top-p 1 / top-k 0 after
+that merge; a regression test verifies the final effective configuration.
 
 `cloud/run_rl_campaign.py` runs SimPO then RLOO and evaluates each; failure of
 one algorithm is recorded without silently treating it as trained. The Kaggle
