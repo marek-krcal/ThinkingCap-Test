@@ -135,7 +135,9 @@ def main():
                           temperature=1.0, top_p=1.0, top_k=0, repetition_penalty=1.0,
                           eos_token_id=eos, pad_token_id=pad, use_cache=True)
                 outputs = model.generate(inputs, attention_mask=torch.ones_like(inputs),
-                                         generation_config=generation)
+                                         generation_config=generation,
+                                         temperature=1.0, top_p=1.0, top_k=0,
+                                         do_sample=True, repetition_penalty=1.0)
             completions, records = [], []
             for i, output in enumerate(outputs):
                 completion = output[len(prompt):].tolist()

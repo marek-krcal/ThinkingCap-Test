@@ -66,3 +66,18 @@ class BinaryObjectives(unittest.TestCase):
         (-actual).backward()
         self.assertTrue(any(p.grad is not None and p.grad.abs().sum()>0
                             for p in model.parameters() if p.requires_grad))
+
+    def test_qwen_generation_defaults_cannot_change_on_policy_sampling(self):
+        from transformers import GenerationConfig, Qwen3Config, Qwen3ForCausalLM
+        model = Qwen3ForCausalLM(Qwen3Config(vocab_size=32, hidden_size=32,
+                     intermediate_size=64, num_hidden_layers=1, num_attention_heads=2,
+                     num_key_value_heads=2, head_dim=16))
+        model.generation_config.temperature = .6
+        model.generation_config.top_p = .95
+        config, unused = model._prepare_generation_config(
+            GenerationConfig(do_sample=True, temperature=1., top_p=1., top_k=0),
+            temperature=1., top_p=1., top_k=0, do_sample=True, repetition_penalty=1.)
+        self.assertEqual(config.temperature, 1.)
+        self.assertEqual(config.top_p, 1.)
+        self.assertEqual(config.top_k, 0)
+        self.assertEqual(config.repetition_penalty, 1.)
