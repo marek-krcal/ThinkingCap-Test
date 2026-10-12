@@ -7,6 +7,9 @@ import shutil
 import sys
 import time
 
+# Direct script execution puts cloud/, not the checkout root, on sys.path.
+# Keep the same entry point valid from Kaggle and an arbitrary working dir.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cloud.run_rl_campaign import run
 
 EXPECTED = {

@@ -2,6 +2,8 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -9,6 +11,14 @@ from cloud.reevaluate_rl import find_adapter
 
 
 class SavedAdapterVerification(unittest.TestCase):
+    def test_direct_script_import_in_clean_interpreter(self):
+        script = Path(__file__).resolve().parents[1]/'cloud/reevaluate_rl.py'
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run([sys.executable, '-I', '-c',
+                       f'import runpy; runpy.run_path({str(script)!r}, run_name="import_smoke")'],
+                       cwd=directory, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_only_exact_saved_trained_adapter_is_accepted(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
