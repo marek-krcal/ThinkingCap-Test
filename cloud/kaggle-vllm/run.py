@@ -138,7 +138,7 @@ def monitor_gpus():
                 stream.write(json.dumps({'time': time.time(), 'stats': stats}) + '\n')
         except (OSError, subprocess.SubprocessError) as error:
             print('GPU telemetry unavailable:', error, flush=True)
-        stopped.wait(15)
+        stopped.wait(1 if os.environ.get('THINKINGCAP_BATCHED_RL') == '1' else 15)
 
 monitor = threading.Thread(target=monitor_gpus, daemon=True)
 monitor.start()
@@ -155,6 +155,8 @@ try:
         command = [python, 'cloud/run_rl_campaign.py']
     if os.environ.get('THINKINGCAP_REEVAL_BINARY_RL') == '1':
         command = [python, 'cloud/reevaluate_rl.py']
+    if os.environ.get('THINKINGCAP_BATCHED_RL') == '1':
+        command = [python, 'cloud/run_batched_rl_campaign.py']
     run('evaluation_total', command, root, timeout=max(1, hard_stop - time.time()))
 finally:
     stopped.set()
