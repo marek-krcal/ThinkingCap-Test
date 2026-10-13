@@ -81,6 +81,97 @@ or trained in this campaign.
 
 ### Training audit and efficiency
 
+#### Hyperparameters and implementation comparison
+
+These are the settings actually used, verified against the pinned trainer
+source, saved summaries/adapter configurations and runtime logs. Optimizer
+options not passed explicitly are marked as PyTorch defaults; the full
+optimizer state was not saved, so these are not reconstructed from a state
+checkpoint. Both cloud runs used torch 2.9.0+cu128, Transformers 4.57.1,
+PEFT 0.17.1 and vLLM 0.11.2 (vLLM only for post-training evaluation in the
+previous run). [PyTorch 2.9 AdamW defaults](https://github.com/pytorch/pytorch/blob/v2.9.0/torch/optim/adamw.py).
+
+| Optimization setting | Previous Transformers RLOO | Batched vLLM RLOO |
+| --- | --- | --- |
+| Optimizer | `torch.optim.AdamW`, LoRA parameters only | Same |
+| Learning rate | **1e-4** | **1e-4**, unchanged |
+| Weight decay | **0**, explicitly disabled | **0**, unchanged |
+| Adam betas | (0.9, 0.999), defaults | Same defaults |
+| Adam epsilon | 1e-8, default | Same default |
+| AMSGrad | False, default | Same default |
+| Fused / foreach overrides | Neither specified (`None`); library-selected implementation | Same; no explicit fused-optimizer change |
+| LR schedule / warmup | Constant LR; no scheduler or warmup | Same |
+| Gradient clipping | Global L2 norm, maximum 1.0, after unscaling | Same |
+| Gradient scaler | Initial scale 128; growth interval 100 | Same |
+| Scaler growth / backoff factors | 2.0 / 0.5, defaults | Same defaults |
+| Optimizer-state lifecycle | Retained across prompt groups within one run; initialized fresh from base | Retained across rounds within one run; initialized fresh from base |
+| Effective batch per optimizer step | 4 trajectories from one informative prompt group | 256 trajectories from 32 prompt instances |
+| Backward microbatch | One complete trajectory at a time; accumulate its group | One complete trajectory at a time; accumulate the whole round |
+| Zero-advantage computation | Entire tied groups skipped; informative groups differentiated | Zero terms skipped, but denominator remains 256 |
+| Update / generation cadence | One update after each informative group; no update for tied groups | Exactly one update after each informative round |
+| Reuse / importance clipping | No trajectory replay; no importance ratios or PPO clipping | Same; one update per current-policy snapshot |
+| Update ceiling | 100 attempted updates; 5 actually completed | Loop ceiling 100 completed updates; 4 actually completed |
+
+Keeping LR identical does **not** make the training dynamics identical.
+The effective batch, gradient averaging, clipping regime, number of Adam
+moment updates and refresh cadence all changed. More sampled trajectories
+therefore need not produce a larger or more effective parameter update.
+
+| Model, loss and reward setting | Previous Transformers RLOO | Batched vLLM RLOO |
+| --- | --- | --- |
+| Starting checkpoint | Pinned Qwen3-0.6B `c1899de...`; fresh initialization of adapters | Same base, not continued from the previous trained adapter |
+| Trainable parameters | 4,587,520 LoRA parameters; base frozen | Same |
+| LoRA rank / alpha / scaling | 16 /32 /alpha÷rank =2 | Same |
+| LoRA targets | q_proj, k_proj, v_proj, o_proj | Same |
+| LoRA dropout / bias | 0 /none | Same |
+| LoRA variants | Standard LoRA; no DoRA or rank-stabilized LoRA | Same |
+| Base / adapter precision | FP16 /FP32 | Same |
+| Learner attention | Transformers SDPA | Same |
+| Transformer gradient checkpointing | Enabled, non-reentrant | Same |
+| Loss positions | Completion only, including first generated token and EOS; no prompt or padding loss | Same |
+| Vocabulary projection / CE | Full completion-sized vocabulary logits, FP32 CE reductions | Checkpointed 128-position LM-head/CE chunks, FP32 reductions |
+| Policy-gradient reduction | Sum token log-probabilities per response; mean across 4 trajectories | Same sequence sum; mean across all 256 trajectories |
+| Advantage | Leave-one-out reward mean of other 3 responses | Leave-one-out reward mean of other 7 responses |
+| Advantage/reward standardization | None | None |
+| Task reward | Correct complete 1; incorrect/malformed/truncated 0 | Same |
+| Brevity bonus / token penalty / KL penalty | All zero; no frozen reference model or critic | Same |
+
+| Data and rollout setting | Previous Transformers RLOO | Batched vLLM RLOO |
+| --- | --- | --- |
+| Training problems | Same 16 test IDs, interleaved across benchmarks | Same; each appears twice in a 32-instance round |
+| Responses per prompt instance | 4 | 8 |
+| Rollout queue | One prompt group at a time | 256 responses queued, at most 64 active |
+| Generator | Transformers on GPU0, shared learner weights | Persistent vLLM on GPU1, explicit LoRA snapshot refresh |
+| Generator attention / scheduling | SDPA, ordinary synchronous batch | FlashInfer, continuous queue, chunked prefill 2,048 tokens |
+| Generator cache | KV cache enabled during `.generate()` | Paged KV cache; prefix caching explicitly disabled |
+| Generator execution | Eager; no CUDA graphs or torch.compile | Same eager policy; no CUDA graphs or torch.compile |
+| Temperature / top-p / top-k | 1.0 /1.0 /disabled (`0` in Transformers) | 1.0 /1.0 /disabled (`-1` in vLLM) |
+| Repetition penalty | 1.0 | Same; min-p 0 and presence/frequency penalties 0 explicit |
+| Thinking mode / chat template | Enabled, original pinned tokenizer | Same |
+| Prompt budget / completion cap | 4,096 /1,024 tokens | Same |
+| Natural training stop | Explicit tokenizer EOS 151645 | Same; inherited model EOS disabled in favor of that explicit stop |
+| Seed | Global Python/Torch seed 42; record seed 42 is not a separate per-trajectory RNG seed | Same initialization seed; independent generation seed `42 + round*100000 + group*8 + sample` |
+| Generation time safeguards | Per-group `min(120, remaining−30)` seconds; may stop incomplete responses | No per-group timer; whole-trainer deadline discards an incomplete round |
+| Training alarm / outer hard cap | 1,140 /1,200 seconds | Same |
+| Learner / rollout synchronization | Same in-memory model; generate before each group update | Hash-verified adapter once per round, new adapter ID, old adapter removed |
+| Sampler/learner numerical audit | Explicit settings regression, but no measured backend log-probability comparison | GPU preflight and two-trajectory comparison each round |
+| Checkpoint saving | Every five completed steps and at exit | Every completed round and at exit |
+| GPU roles | GPU0 generates and trains; GPU1 unused during training | GPU0 trains; GPU1 generates; phases do not overlap |
+
+The earlier SimPO probe also used AdamW LR 1e-4, weight decay 0, the same
+LoRA/precision/clipping/scaler settings, but a length-normalized preference
+loss with beta 2 and gamma 1, rather than RLOO's sequence-summed policy
+gradient. Its fixed nine-pair pool was replayed for 100 updates. The new
+iterative SimPO code retains those optimizer/margin values but refreshes
+512 trajectories per round and uses up to eight disjoint pair minibatches;
+it has not been run on GPU, so it is not an additional measured comparison.
+
+The subsequent 400×1 evaluation retained the same eager FP16 DP2 continuous-64
+hardware recipe, seeds, sampling (0.6/0.95/20), model/cohort/grader revisions
+and original output caps (MBPP 8,192; other benchmarks 4,096). Completion
+metadata auditing and malformed-thinking rejection are corrected in the
+new evaluator, as documented in the preceding binary-probe report.
+
 | Measurement | Previous Transformers RLOO | Batched vLLM RLOO |
 | --- | ---: | ---: |
 | Training including loading and save | 1,110.196 s | 1,131.510 s (18m52s) |
