@@ -141,6 +141,39 @@ independently. Quota before test-002 launch: 27,749.42/108,000 seconds used,
 reserved 0, refresh 02:00 Prague. Fresh draft OFF and account-wide capacity checks
 passed. No old full-training collection was resumed.
 
+At **01:32 Prague**, revised coverage is **9,658 saved AND graded / 44,472**:
+8,517 test answers and 1,141 selected training answers, zero awaiting CPU grading.
+The scope audit found no duplicate keys or invalid seed/truncation labels.
+Selected train-000 a3 finished its normal deadline with 1,093 new answers
+(385 correct, 343 capped, 2,559,127 tokens), bringing that shard to 1,101/3,200
+including its eight reused answers. Its generation-only window was 2,563.07s;
+cold engine startup 130.74s, total generation stage 2,693.82s. Partial-deadline
+rates are completion-biased and must not be treated as final source scores.
+
+| Selected train-000 a3 source | New answers | Correct | Capped | Tokens |
+| --- | ---: | ---: | ---: | ---: |
+| GSM8K | 753 | 283 | 205 | 1,759,320 |
+| Skywork | 224 | 24 | 138 | 741,566 |
+| CommonsenseQA | 68 | 43 | 0 | 31,279 |
+| ARC Easy | 48 | 35 | 0 | 26,962 |
+
+Test-002 a1 finished all 3,200 answers and its separate CPU grades are audited:
+2,550 correct, zero capped, 699,079 tokens. Generation-only 427.38s, cold startup
+137.17s, generation stage 564.55s. This mostly BFCL shard is much shorter than
+the selected arithmetic or MBPP streams; it cannot support a single corpus ETA.
+
+New GPU submissions are `thinkingcap-offline-test-003-a1` v1 and
+`thinkingcap-offline-subset-train-001-a2` v1, both pinned
+`2ea857071b915bd8cf048bdc76860e968ea4b68f`. The selected shard attaches its
+audited bootstrap and must skip 16 exact saved keys (3,184 missing). Their
+actual queues passed fresh startup verification at 01:35 Prague: test queues
+360/1,600 and 300/1,600 completed, both T4s 92–95% busy; selected train queue
+40/1,592 completed with both T4s 96–97% busy. The expected 1,592 requests/GPU
+confirm that its 16 reused answers were excluded. CPU slot is free.
+Before the second launch quota was 29,085.42/108,000 seconds used, reserved 0;
+refresh still 02:00 Prague. Fresh draft OFF checks preceded both submissions.
+The full revised corpus remains incomplete; no training is being run.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
