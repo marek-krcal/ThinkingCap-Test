@@ -7,6 +7,8 @@ import unittest
 from unittest.mock import MagicMock
 
 from cloud.dispatch_offline import build_bundle, check_capacity
+from cloud.refresh_offline import refresh
+from utils.offline import digest
 
 
 class DispatchTests(unittest.TestCase):
@@ -54,3 +56,19 @@ class DispatchTests(unittest.TestCase):
         ledger = {'attempts':[dict(kernel=x,state='submitted',timeout=3600) for x in ('one','two')]}
         with self.assertRaisesRegex(RuntimeError, 'Two account sessions'):
             check_capacity(self.api(), ledger, 3600)
+
+    def test_pending_resume_keeps_previous_saved_and_graded_coverage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); data=root/'data'; data.mkdir(); state=root/'state'; state.mkdir()
+            (data/'collection-plan.json').write_text(json.dumps(dict(expected_answers=8,jobs=[dict(id='train-000')])))
+            artifacts=root/'old-artifacts'; (artifacts/'collection').mkdir(parents=True)
+            labels=[dict(id='x',sample_index=i,correct=True,truncated=False,output_tokens=2) for i in range(3)]
+            (artifacts/'collection/labels.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in labels))
+            ledger=dict(plan_sha256=digest(data/'collection-plan.json'),attempts=[
+                dict(job_id='train-000',kernel='old',state='partial',completed_answers=3,new_answers=3,artifacts=str(artifacts)),
+                dict(job_id='train-000',kernel='new',state='submitted',completed_answers=3,new_answers=0)])
+            (state/'ledger.json').write_text(json.dumps(ledger))
+            api=MagicMock(); api.kernels_status.return_value=SimpleNamespace(status=SimpleNamespace(name='RUNNING'))
+            result=refresh(api,data,state)
+            self.assertEqual(result['progress']['saved_answers'],3)
+            self.assertEqual(result['progress']['graded_answers'],3)

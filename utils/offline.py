@@ -109,7 +109,7 @@ def grade_saved(source, out, questions_root='questions', workers=4, sandbox=None
             # answers or publish a full-benchmark score for a partial collection.
             active = {r['id'] for r in records}
             grading = grading_context(suite, arguments)
-            grade_all([q for q in questions if q['id'] in active], records, grading)
+            grade_collection_rows([q for q in questions if q['id'] in active], records, grading)
             results = dict(partial_collection=True, answers=len(records),
                 correct=sum(r.get('correct') is True for r in records))
             (out/'results.json').write_text(json.dumps(results, indent=2)+'\n')
@@ -146,6 +146,23 @@ def _suite_for_grading(questions_root, manifest):
     for key in ('evalplus', 'bfcl', 'ifeval', 'mbpp'):
         suite[key] = fresh[key]
     return suite
+
+
+def grade_collection_rows(questions, records, grading):
+    """Bound sandbox worker lifetime without splitting one prompt's samples.
+
+    Offline shards can contain thousands of MBPP programs; the sandbox's
+    existing per-process CPU/memory limits stay unchanged. The normal 400/full
+    evaluation path keeps its original batching behavior.
+    """
+    from evaluate import grade_all
+    by_id = {}
+    for record in records:
+        by_id.setdefault(record['id'], []).append(record)
+    for start in range(0, len(questions), 32):
+        subset = questions[start:start+32]
+        rows = [r for q in subset for r in by_id[q['id']]]
+        grade_all(subset, rows, grading)
 
 
 def _grade_benchmark(out, questions_root, manifest, arguments, questions, records):

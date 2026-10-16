@@ -103,6 +103,8 @@ commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=Tr
 pathlib.Path('/kaggle/working/run-config.json').write_text(json.dumps({
     'repo': repo, 'ref': ref, 'commit': commit, 'mode': mode, 'samples': samples,
     'limit_per_benchmark': limit, 'tensor_parallel_size': tp, 'data_parallel_size': dp,
+    'offline_job': os.environ.get('THINKINGCAP_OFFLINE_JOB'),
+    'collection_plan_sha256': os.environ.get('THINKINGCAP_PLAN_SHA'),
     'dtype': 'half', 'max_num_seqs': 64, 'continuous_queue': True,
     'timeout_seconds': timeout}, indent=2))
 run('installer_bootstrap', [sys.executable, '-m', 'pip', 'install', '-q', 'uv'])

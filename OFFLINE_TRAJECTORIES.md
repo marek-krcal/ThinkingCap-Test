@@ -180,8 +180,21 @@ Initial collection sessions, runner `2c3e01acebaefe11838c9013319926b6ec175cc4`:
 - [Training shard train-000, attempt 1](https://www.kaggle.com/code/krcalkrcal/thinkingcap-offline-train-000-a1)
 - [CPU-only 400-answer grading verification](https://www.kaggle.com/code/krcalkrcal/thinkingcap-offline-cpu-verification)
 
-These collection/CPU-verification sessions are still pending their terminal
-audits. The entire corpus is **not** complete. At initial collection submission,
+The CPU-only verification version 2 **passed**: all 400 individual verdicts
+matched the original grades, 259 correct, 11 truncated, 25.89 seconds grading,
+no torch/vLLM import and no GPU used. Version 1 caught a missing EvalPlus
+dependency (`psutil`); that CPU environment was repaired before retrying on the
+same saved answers. No trajectories were regenerated for either CPU attempt.
+The current local regression suite passes **154 tests**.
+
+Both collection jobs have passed engine health checks and started their queues,
+1,600 requests per GPU (400 prompts × 8 / 2), with actual utilization on all four
+T4s. First-launch generic `run-config.json` still labels its default wrapper
+sample count as 1; the actual collector command, frozen plan and raw generation
+manifest specify **8**. Later launchers correct that display metadata; it does
+not change those running jobs' generation count or require a rerun.
+
+Collection terminal audits remain pending. The entire corpus is **not** complete. At initial collection submission,
 Kaggle's live API reported **108,000s (30h)** weekly allowance, **10,624.69s** used,
 zero reserved; refresh October 17 00:00 UTC. This supersedes its earlier 6h
 allowance. The dispatcher always re-reads actual quota; it does not assume either

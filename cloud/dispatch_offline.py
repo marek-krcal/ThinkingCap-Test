@@ -38,7 +38,7 @@ def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generatio
     title = f'ThinkingCap offline {job_id} a{attempt}'
     slug = title.lower().replace(' ', '-')
     kernel = 'krcalkrcal/'+slug
-    environment = dict(THINKINGCAP_REF=commit, THINKINGCAP_MODE='smoke',
+    environment = dict(THINKINGCAP_REF=commit, THINKINGCAP_MODE='full', THINKINGCAP_SAMPLES='8',
         THINKINGCAP_OFFLINE_JOB=job_id, THINKINGCAP_GENERATION_SECONDS=str(generation_seconds),
         THINKINGCAP_TIMEOUT_SECONDS=str(timeout), THINKINGCAP_PLAN_SHA=plan_hash)
     # Build artifacts: this tiny launcher is generated from fixed fields. There
@@ -153,7 +153,9 @@ def main():
         kernel = build_bundle(folder, options.job, attempt, options.commit, plan_hash,
             parent, options.generation_seconds, options.timeout)
         row = dict(job_id=options.job, attempt=attempt, kernel=kernel, commit=options.commit,
-            timeout=options.timeout, submitted_at=time.time(), state='submission_pending', quota_before=quota)
+            timeout=options.timeout, submitted_at=time.time(), state='submission_pending', quota_before=quota,
+            completed_answers=previous[-1]['completed_answers'] if previous else 0,
+            new_answers=0, parent_kernel=parent)
         ledger['attempts'].append(row)
         # Record intent first. An ambiguous network failure must not cause a
         # second submission; the monitor resolves the known kernel identity.

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from utils.offline import digest, grade_saved, read_generation, save_generation
+from utils.offline import digest, grade_saved, read_generation, save_generation, grade_collection_rows
 from utils.generation import run_queue
 from evaluate import build_jobs, merge_shard_records
 from cloud.collect_offline import prior_keys, main as collect_main
@@ -14,6 +14,18 @@ from evaluate import BASE_MODEL, BASE_REVISION
 
 
 class OfflineTests(unittest.TestCase):
+    def test_collection_grading_bounds_worker_batches_without_splitting_samples(self):
+        questions=[dict(id=str(i)) for i in range(100)]
+        records=[dict(id=q['id'],sample_index=i) for q in questions for i in range(8)]
+        calls=[]
+        def grade(q, r, context):
+            calls.append((len(q),len(r)))
+            for row in r: row['correct']=True
+        with patch('evaluate.grade_all',grade):
+            grade_collection_rows(questions,records,{})
+        self.assertEqual(calls,[(32,256),(32,256),(32,256),(4,32)])
+        self.assertTrue(all(r['correct'] for r in records))
+
     def fixture(self, root):
         root.mkdir()
         question = dict(id='gsm8k/1', dataset='gsm8k', seed_index=1000000,
