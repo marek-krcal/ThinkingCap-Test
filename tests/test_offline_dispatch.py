@@ -72,3 +72,20 @@ class DispatchTests(unittest.TestCase):
             result=refresh(api,data,state)
             self.assertEqual(result['progress']['saved_answers'],3)
             self.assertEqual(result['progress']['graded_answers'],3)
+
+    def test_draft_404_requires_fresh_explicit_inactive_acknowledgement(self):
+        import requests
+        api=self.api()
+        api.kernels_list.return_value=[SimpleNamespace(ref='draft',current_version_number=None)]
+        response=requests.Response(); response.status_code=404
+        api.kernels_status.side_effect=requests.HTTPError(response=response)
+        with self.assertRaises(requests.HTTPError):
+            check_capacity(api, {'attempts':[]}, 3600)
+        result=check_capacity(api, {'attempts':[]}, 3600, ['draft'])
+        self.assertEqual(result['active'],[])
+        self.assertEqual(result['verified_inactive_drafts'],['draft'])
+        api.kernels_list.return_value=[SimpleNamespace(ref='draft',current_version_number=0)]
+        self.assertEqual(check_capacity(api, {'attempts':[]}, 3600, ['draft'])['active'],[])
+        api.kernels_list.return_value=[SimpleNamespace(ref='draft',current_version_number=1)]
+        with self.assertRaises(requests.HTTPError):
+            check_capacity(api, {'attempts':[]}, 3600, ['draft'])

@@ -194,7 +194,44 @@ sample count as 1; the actual collector command, frozen plan and raw generation
 manifest specify **8**. Later launchers correct that display metadata; it does
 not change those running jobs' generation count or require a rerun.
 
-Collection terminal audits remain pending. The entire corpus is **not** complete. At initial collection submission,
+### First collection checkpoint (October 16, approximately 21:03 UTC)
+
+Both initial GPU sessions finished **COMPLETE**, sealing deadline-limited partial
+outputs normally: test-000 saved **874/3,200** answers (1,676,066 tokens), and
+train-000 saved **910/3,200** (2,322,581 tokens). These are **1,784/402,968** target
+answers, not completed shards. Unfinished requests were aborted and not saved.
+The test output is being graded by a separate CPU-only job; training labels were
+graded inline with no duplicate keys detected by the ledger audit. Resume jobs
+attach prior outputs and skip their exact completed keys, preserving seeds.
+
+Training's first partial labels (not representative final dataset scores):
+
+| Source | Saved answers | Correct | Token-cap hits | Output tokens |
+| --- | ---: | ---: | ---: | ---: |
+| Skywork | 538 | 22 | 396 | 1,929,430 |
+| GSM8K | 137 | 54 | 38 | 287,836 |
+| CommonsenseQA | 186 | 101 | 0 | 79,238 |
+| ARC Easy | 49 | 43 | 0 | 26,077 |
+
+All 434 capped training answers are marked truncated and incorrect. The high
+Skywork cap rate deserves monitoring; caps and sampling remain unchanged.
+Completion-at-deadline selection favors answers that finished earlier, so these
+partial correctness, length and cap rates must not be treated as final rates.
+Reported generation windows were 2,563.59s test and 2,538.02s training; saved
+answers exclude work spent on aborted requests. Both GPUs per job were busy,
+but KV-cache usage near 100% coincided with strongly fluctuating throughput.
+At the initial aggregate rate, the full target would take roughly **170 paired-T4
+session-hours** (about 85 wall-hours with two sessions); this is a very uncertain
+extrapolation across heterogeneous sources, partial-answer bias and resume tails,
+not a completion promise. The full target is retained across legitimate resets.
+
+A draft-only unrelated notebook (`test-gpus`) caused the version-status API to
+return 404. Its editor was checked and showed **Draft Session off**. Dispatch now
+requires an explicit, fresh, exact-ref acknowledgement to exempt such a draft;
+404 alone, a published version, or any other status error still blocks submission.
+155 local regression tests pass.
+
+The entire corpus is **not** complete. At initial collection submission,
 Kaggle's live API reported **108,000s (30h)** weekly allowance, **10,624.69s** used,
 zero reserved; refresh October 17 00:00 UTC. This supersedes its earlier 6h
 allowance. The dispatcher always re-reads actual quota; it does not assume either

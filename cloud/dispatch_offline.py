@@ -59,7 +59,7 @@ def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generatio
     return kernel
 
 
-def check_capacity(api, ledger, timeout):
+def check_capacity(api, ledger, timeout, verified_inactive_drafts=()):
     with api.build_kaggle_client() as client:
         quota = retry_read(client.kernels.kernels_api_client.get_accelerator_quota_statistics)
     gpu = quota.gpu_quota
@@ -77,7 +77,17 @@ def check_capacity(api, ledger, timeout):
             if ('/thinkingcap-offline-grade-' in row.ref or
                     '/thinkingcap-offline-cpu-verification' in row.ref):
                 continue
-            status = retry_read(lambda: api.kernels_status(row.ref)).status.name
+            try:
+                status = retry_read(lambda: api.kernels_status(row.ref)).status.name
+            except Exception as error:
+                # Draft-only notebooks have no version session endpoint. Never
+                # infer inactivity from a 404: require a fresh editor check and
+                # an explicit per-invocation acknowledgement for this exact ref.
+                if (getattr(getattr(error, 'response', None), 'status_code', None) == 404
+                        and row.ref in verified_inactive_drafts
+                        and getattr(row, 'current_version_number', None) in (None, 0)):
+                    continue
+                raise
             if status in ('RUNNING', 'QUEUED', 'CANCEL_REQUESTED'):
                 active.append(row.ref)
         if len(rows) < 100: break
@@ -100,6 +110,7 @@ def check_capacity(api, ledger, timeout):
         raise RuntimeError(f'Wait for quota reset: only {seconds:.0f}s unreserved; need {timeout+120}s')
     return dict(used=gpu.time_used.total_seconds(), reserved=gpu.time_reserved.total_seconds(),
         allowed=gpu.total_time_allowed.total_seconds(), active=active,
+        verified_inactive_drafts=list(verified_inactive_drafts),
         refresh=str(quota.quota_refresh_time))
 
 
@@ -112,6 +123,8 @@ def main():
     parser.add_argument('--generation-seconds', type=int, default=2700)
     parser.add_argument('--timeout', type=int, default=3600)
     parser.add_argument('--submit', action='store_true')
+    parser.add_argument('--verified-inactive-draft', action='append', default=[],
+        help='Exact draft-only ref just verified OFF in its editor; not a persistent exemption')
     options = parser.parse_args()
     data = Path(options.data)
     plan_file = data/'collection-plan.json'
@@ -147,7 +160,7 @@ def main():
             return
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi(); api.authenticate()
-        quota = check_capacity(api, ledger, options.timeout)
+        quota = check_capacity(api, ledger, options.timeout, options.verified_inactive_draft)
         if parent and api.kernels_status(parent).status.name != 'COMPLETE':
             raise RuntimeError('Previous output must be COMPLETE and attachable, not running or failed')
         kernel = build_bundle(folder, options.job, attempt, options.commit, plan_hash,
