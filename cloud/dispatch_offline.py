@@ -72,7 +72,10 @@ def check_capacity(api, ledger, timeout):
         rows = retry_read(lambda: api.kernels_list(mine=True, page=page, page_size=100)) or []
         for row in rows:
             listed.add(row.ref)
-            if not getattr(row, 'enable_gpu', True):
+            # Kaggle's lightweight listing can omit enable_gpu and deserialize
+            # it as False even for a T4 run. Exclude only our known CPU launchers.
+            if ('/thinkingcap-offline-grade-' in row.ref or
+                    '/thinkingcap-offline-cpu-verification' in row.ref):
                 continue
             status = retry_read(lambda: api.kernels_status(row.ref)).status.name
             if status in ('RUNNING', 'QUEUED', 'CANCEL_REQUESTED'):
@@ -81,6 +84,11 @@ def check_capacity(api, ledger, timeout):
         page += 1
     if any(a.get('state')=='submission_pending' and a['kernel'] not in listed for a in ledger['attempts']):
         raise RuntimeError('Resolve an ambiguous submission before launching more jobs')
+    for attempt in ledger['attempts']:
+        if attempt.get('state') == 'submitted' and attempt['kernel'] not in listed:
+            # A new push may not appear in the list immediately. Treat it as
+            # occupying a slot until a refresh proves its terminal outcome.
+            active.append(attempt['kernel'])
     if len(active) >= 2:
         raise RuntimeError('Two account sessions already active/queued: '+str(active))
     # Account quota can lag queued work. Reserve its entire declared timeout

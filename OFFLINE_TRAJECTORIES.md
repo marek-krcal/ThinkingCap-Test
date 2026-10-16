@@ -157,6 +157,32 @@ Kaggle computation itself continues remotely.
 Local regression tests cover the unchanged evaluation queue, raw artifact hashes,
 seed/cap/token validation, separate grading without regeneration, partial queue
 shutdown, resume identity, fixed private launchers and quota/concurrency guards.
-The live 400-answer GPU verification and first collection shards must be audited
-before declaring the complete pipeline or corpus finished. No training runs are
-part of this collection request.
+
+The October 16 GPU verification **passed**:
+
+- 400 unique saved answers, matching baseline question IDs/sample indices/seeds.
+- Both saved-answer grading passes identical; zero regenerated answers or grader errors.
+- Raw records SHA-256 `da56766b2cd659c33d3857447a73ce0ab591253c26bc435407a1b545b7d7c406`.
+- Scores MBPP **50/100**, BFCL **75/100**, SVAMP **79/100**, IFEval **55/100**:
+  259/400 versus the earlier 261/400 base model. Small differences are consistent
+  with stochastic/runtime variation, not a demonstrated quality change. 312/400
+  decoded completions exactly match the earlier run; fixed seeds do not make
+  GPU sampling bit-identical across runtime conditions.
+- 362,023 output tokens; 11 capped completions. All remain marked as truncated.
+- Reported controller generation-only time **381.50s**; cold engine startup
+  **139.63s**, generation stage **532.16s**, grading twice **51.11s**.
+  This is not a speed benchmark against a warm engine.
+- A separate tiny local M1 CPU smoke saved/read one 16-token completion correctly.
+
+Initial collection sessions, runner `2c3e01acebaefe11838c9013319926b6ec175cc4`:
+
+- [Test shard test-000, attempt 1](https://www.kaggle.com/code/krcalkrcal/thinkingcap-offline-test-000-a1)
+- [Training shard train-000, attempt 1](https://www.kaggle.com/code/krcalkrcal/thinkingcap-offline-train-000-a1)
+- [CPU-only 400-answer grading verification](https://www.kaggle.com/code/krcalkrcal/thinkingcap-offline-cpu-verification)
+
+These collection/CPU-verification sessions are still pending their terminal
+audits. The entire corpus is **not** complete. At initial collection submission,
+Kaggle's live API reported **108,000s (30h)** weekly allowance, **10,624.69s** used,
+zero reserved; refresh October 17 00:00 UTC. This supersedes its earlier 6h
+allowance. The dispatcher always re-reads actual quota; it does not assume either
+number remains fixed. No training runs are part of this collection request.

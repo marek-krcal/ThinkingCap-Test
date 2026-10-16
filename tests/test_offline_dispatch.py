@@ -45,3 +45,12 @@ class DispatchTests(unittest.TestCase):
         ledger = {'attempts':[dict(kernel='one',timeout=3600)]}
         result = check_capacity(self.api(('one',),used=15000,reserved=3600), ledger, 2000)
         self.assertEqual(result['reserved'],3600)
+
+    def test_omitted_gpu_metadata_and_not_yet_listed_push_still_occupy_slots(self):
+        api = self.api(('one','two'))
+        api.kernels_list.return_value = [SimpleNamespace(ref=x,enable_gpu=False) for x in ('one','two')]
+        with self.assertRaisesRegex(RuntimeError, 'Two account sessions'):
+            check_capacity(api, {'attempts':[]}, 3600)
+        ledger = {'attempts':[dict(kernel=x,state='submitted',timeout=3600) for x in ('one','two')]}
+        with self.assertRaisesRegex(RuntimeError, 'Two account sessions'):
+            check_capacity(self.api(), ledger, 3600)
