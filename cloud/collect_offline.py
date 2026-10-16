@@ -101,6 +101,11 @@ def main():
     (out/'collection-index.json').write_text(json.dumps(index, indent=2)+'\n')
     summary = dict(index, generation=manifest['generation'], grading_status='pending')
     (out/'collection-summary.json').write_text(json.dumps(summary, indent=2)+'\n')
+    if kind == 'benchmark':
+        summary['grading_status'] = 'deferred_cpu'
+        (out/'collection-summary.json').write_text(json.dumps(summary, indent=2)+'\n')
+        print('Raw benchmark trajectories sealed; grade in a separate CPU-only job.', flush=True)
+        return
     graded = grade_saved(out/'raw', out/'graded', str(ROOT/'questions'), allow_partial=True)
     # Lightweight labels let local audits aggregate correctness and cap rates
     # without downloading the potentially multi-GB text/token corpus.

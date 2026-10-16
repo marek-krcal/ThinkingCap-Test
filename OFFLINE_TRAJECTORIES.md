@@ -110,8 +110,24 @@ is preserved even if a session ends partially complete.
 
 The shared queue saves each completed trajectory immediately. At the collection
 deadline it aborts unfinished requests and seals an explicitly partial artifact,
-then grades the saved answers and exits normally. The original evaluation path
+then exits normally. Training/validation correctness checks take negligible CPU
+time and run immediately. Benchmark grading is deferred to a **CPU-only Kaggle
+job**, avoiding paid-in-quota GPU idle time during MBPP execution. The original evaluation path
 has no such partial mode and still requires complete coverage.
+
+After refresh reports a benchmark shard as `generated`, submit its saved-answer
+CPU grader (at most one campaign CPU grader at a time):
+
+```sh
+.venv-kaggle/bin/python cloud/dispatch_offline_grade.py --job test-000 \
+  --commit FULL_PUBLISHED_COMMIT_SHA
+```
+
+The CPU environment contains neither torch nor vLLM. It reads the attached raw
+Kaggle output, verifies hashes and grades without a model download. A separate
+400-answer CPU verification compares every verdict with the original GPU-session
+grading. The ledger distinguishes **generated** from **graded**, so saved-but-not-
+graded answers cannot masquerade as a finished dataset.
 
 `collection/collection-index.json` carries cumulative completed question/sample
 keys for that shard, plan hash, parent-index provenance and remaining coverage.

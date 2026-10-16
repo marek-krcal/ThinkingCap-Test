@@ -16,6 +16,17 @@ sys.path.insert(0, str(ROOT))
 from utils.offline import digest
 
 
+def retry_read(operation):
+    """Retry only harmless reads; never blindly retry a GPU submission."""
+    import requests
+    for attempt in range(3):
+        try:
+            return operation()
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == 2: raise
+            time.sleep(attempt+1)
+
+
 def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generation_seconds, timeout):
     if not re.fullmatch(r'[0-9a-f]{40}', commit):
         raise ValueError('Pin a full commit ID')
@@ -50,7 +61,7 @@ def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generatio
 
 def check_capacity(api, ledger, timeout):
     with api.build_kaggle_client() as client:
-        quota = client.kernels.kernels_api_client.get_accelerator_quota_statistics()
+        quota = retry_read(client.kernels.kernels_api_client.get_accelerator_quota_statistics)
     gpu = quota.gpu_quota
     if gpu is None or gpu.total_time_allowed is None or gpu.time_used is None or gpu.time_reserved is None:
         raise RuntimeError('Actual Kaggle quota unavailable; do not guess capacity')
@@ -58,10 +69,12 @@ def check_capacity(api, ledger, timeout):
     listed = set()
     page = 1
     while True:
-        rows = api.kernels_list(mine=True, page=page, page_size=100) or []
+        rows = retry_read(lambda: api.kernels_list(mine=True, page=page, page_size=100)) or []
         for row in rows:
             listed.add(row.ref)
-            status = api.kernels_status(row.ref).status.name
+            if not getattr(row, 'enable_gpu', True):
+                continue
+            status = retry_read(lambda: api.kernels_status(row.ref)).status.name
             if status in ('RUNNING', 'QUEUED', 'CANCEL_REQUESTED'):
                 active.append(row.ref)
         if len(rows) < 100: break

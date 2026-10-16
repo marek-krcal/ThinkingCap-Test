@@ -635,12 +635,17 @@ def generate_transformers(jobs, arguments, out, tokenizer, eos_ids, open_id, clo
             output = model.generate(
                 input_ids=input_ids, attention_mask=attention_mask,
                 max_new_tokens=token_cap(job["row"]["dataset"], arguments),
-                do_sample=True, temperature=SAMPLING["temperature"],
-                top_p=SAMPLING["top_p"], top_k=SAMPLING["top_k"],
+                do_sample=True, **sampling_parameters(arguments),
                 pad_token_id=tokenizer.eos_token_id,
             )
             tokens = output[0, input_ids.shape[1]:].tolist()
             record = record_from_tokens(job, tokens, tokenizer, eos_ids, open_id, close_id)
+            configured_eos = model.generation_config.eos_token_id
+            configured_eos = configured_eos if isinstance(configured_eos, list) else [configured_eos]
+            stopped = bool(tokens and tokens[-1] in set(configured_eos)|eos_ids)
+            record.update(completion_tokens=tokens, finish_reason='stop' if stopped else 'length',
+                stop_reason=tokens[-1] if stopped else None, truncated=not stopped,
+                completion_verified_by='transformers_effective_eos')
             records.append(record)
             stream.write(json.dumps(record) + "\n")
             stream.flush()

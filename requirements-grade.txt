@@ -1,0 +1,16 @@
+# CPU-only grading: no torch, transformers, vLLM or base-model download.
+datasets==5.0.1
+numpy==2.2.6
+nltk==3.9.2
+tree-sitter==0.26.0
+tree-sitter-python==0.25.0
+appdirs
+termcolor
+wget
+tempdir
+multipledispatch
+absl-py
+langdetect
+immutabledict
+rich
+tqdm

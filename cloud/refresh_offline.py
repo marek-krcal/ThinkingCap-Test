@@ -41,6 +41,23 @@ def refresh(api, data, state):
         keys = prior_keys(index_path, plan_hash, job, questions)
         summary = json.loads(summary_path.read_text())
         index = json.loads(index_path.read_text())
+        attempt.update(completed_answers=len(keys), new_answers=index['new_answers'])
+        if summary['grading_status'] == 'deferred_cpu':
+            attempt['state'] = 'generated'
+            if not attempt.get('grade_kernel'):
+                continue
+            grade_status = api.kernels_status(attempt['grade_kernel']).status.name
+            attempt['grade_remote_status'] = grade_status
+            if grade_status in ('RUNNING','QUEUED','CANCEL_REQUESTED'):
+                continue
+            if grade_status != 'COMPLETE':
+                attempt['state'] = 'audit_required'
+                continue
+            # Overlay small CPU grading artifacts, never raw trajectories.
+            api.kernels_output(attempt['grade_kernel'], path=str(destination),page_size=200,
+                file_pattern=r'(collection-(summary|index)\.json|labels\.jsonl|results\.json|grading-provenance\.json)$',quiet=True,force=True)
+            summary = json.loads(summary_path.read_text())
+            index = json.loads(index_path.read_text())
         labels = [json.loads(line) for line in (destination/'collection/labels.jsonl').read_text().splitlines()]
         if (len(labels) != index['new_answers'] or any(type(r.get('correct')) is not bool for r in labels) or
                 len({(r['id'],r['sample_index']) for r in labels}) != len(labels) or
@@ -79,8 +96,11 @@ def refresh(api, data, state):
             counters = by_split.setdefault(split, Counter())
             counters.update(answers=1, correct=int(row['correct']), truncated=int(row['truncated']),
                 output_tokens=row['output_tokens'])
-    if len(by_key) != ledger['progress']['saved_answers']:
+    ungraded = sum(a.get('new_answers',0) for a in ledger['attempts'] if a['state'] not in ('completed','partial'))
+    if len(by_key)+ungraded != ledger['progress']['saved_answers']:
         raise ValueError('Cumulative indexes disagree with graded label coverage')
+    ledger['progress']['graded_answers'] = len(by_key)
+    ledger['progress']['awaiting_cpu_grading'] = [a['job_id'] for a in latest.values() if a['state']=='generated']
     ledger['progress']['partitions'] = {k:dict(v) for k,v in by_split.items()}
     if ledger['progress']['completed_shards'] == len(plan['jobs']):
         expected = set()
