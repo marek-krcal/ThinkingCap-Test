@@ -19,7 +19,7 @@ def refresh(api, data, state):
     if ledger['plan_sha256'] != plan_hash:
         raise ValueError('Ledger plan changed')
     for attempt in ledger['attempts']:
-        if attempt['state'] in ('completed', 'partial'):
+        if attempt['state'] in ('completed', 'partial', 'cancelled_startup'):
             continue
         status = api.kernels_status(attempt['kernel']).status.name
         attempt['remote_status'] = status
@@ -80,7 +80,7 @@ def refresh(api, data, state):
         completed_shards=sum(a['state']=='completed' for a in latest.values()),
         total_shards=len(plan['jobs']),
         pending_shards=[j['id'] for j in plan['jobs'] if j['id'] not in latest],
-        incomplete_shards=[k for k,a in latest.items() if a['state']=='partial'],
+        incomplete_shards=[k for k,a in latest.items() if a['state'] in ('partial','cancelled_startup')],
         attention=[a['kernel'] for a in latest.values() if a['state'] in ('failed','audit_required')])
     # Aggregate small labels across every successful attempt, not just the
     # latest partial's new answers. A duplicated trajectory is a hard failure.

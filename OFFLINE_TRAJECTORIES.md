@@ -95,6 +95,24 @@ The legacy refresh still reports its old historical target; that is not the
 authorized current target. Revised target remains **44,472**, not 402,968.
 161 local regression tests pass. No actual training has been run.
 
+### Selected collector startup stall, October 17 around 00:27 Prague
+
+`thinkingcap-offline-subset-train-000-a2` v1 never exposed a launcher/setup log
+after more than 20 minutes RUNNING. Both log endpoints and the exact-session SSE
+were empty; its notebook page showed **Output 0 B**. The cause is not established
+(provider startup versus an unlogged initial fetch). Session **359151837** was
+cancelled through the API and **CANCEL_ACKNOWLEDGED verified**. No new committed
+raw output exists; the CPU bootstrap's 48 selected answers remain intact.
+
+The launcher now prints immediately and fetches pinned setup code in a bounded
+90-second subprocess, so a DNS/fetch stall cannot bypass its timeout once Python
+starts. A replacement can use the audited bootstrap only after the failed
+session remains stopped and fresh quota/concurrency are checked. It gets a new
+attempt identity; no overlapping retry or silent reuse of the cancelled output.
+162 tests pass, including rejecting retries without zero-output/stopped evidence.
+Independent `thinkingcap-offline-test-000-a3` is running; test-001's CPU grader
+has completed and its 3,200 labels need refresh/audit.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.

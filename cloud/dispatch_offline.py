@@ -48,11 +48,13 @@ def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generatio
         THINKINGCAP_TIMEOUT_SECONDS=str(timeout), THINKINGCAP_PLAN_SHA=plan_hash)
     # Build artifacts: this tiny launcher is generated from fixed fields. There
     # are no credentials, user-code interpolation, or shell substitutions.
-    source = ('import os, urllib.request\n'
+    source = ('import os, subprocess, sys\n'
+        f'print("Collection launcher starting: {job_id} attempt {attempt}", flush=True)\n'
         f'os.environ.update({environment!r})\n'
         f'url="https://raw.githubusercontent.com/marek-krcal/ThinkingCap-Test/{commit}/cloud/kaggle-vllm/run.py"\n'
-        'with urllib.request.urlopen(url, timeout=60) as response:\n'
-        '    source=response.read().decode("utf-8")\n'
+        'fetch="import sys,urllib.request; r=urllib.request.urlopen(sys.argv[1],timeout=60); sys.stdout.buffer.write(r.read())"\n'
+        'source=subprocess.run([sys.executable,"-c",fetch,url],check=True,stdout=subprocess.PIPE,timeout=90).stdout.decode("utf-8")\n'
+        'print("Pinned launcher fetched; starting setup", flush=True)\n'
         'exec(compile(source,url,"exec"), {"__name__":"__main__", "__file__":url})\n')
     (folder/'run.py').write_text(source)
     metadata = dict(id=kernel, title=title, code_file='run.py', language='python',
@@ -62,6 +64,21 @@ def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generatio
         model_sources=[])
     (folder/'kernel-metadata.json').write_text(json.dumps(metadata, indent=2)+'\n')
     return kernel
+
+
+def resume_parent(previous):
+    if not previous: return None
+    latest=previous[-1]
+    if latest['state']=='partial': return latest
+    if (latest['state']=='cancelled_startup' and latest.get('new_answers')==0 and
+            latest.get('remote_status')=='CANCEL_ACKNOWLEDGED' and latest.get('verified_output_bytes')==0):
+        audited=[a for a in previous[:-1] if a['state'] in ('partial','completed')]
+        if audited:
+            parent=audited[-1]
+            if (parent['state']=='partial' and latest.get('parent_kernel')==parent['kernel'] and
+                    latest.get('completed_answers')==parent['completed_answers']):
+                return parent
+    raise ValueError('Previous attempt must be audited partial or verified stopped zero-output startup; do not duplicate work')
 
 
 def check_capacity(api, ledger, timeout, verified_inactive_drafts=()):
@@ -173,10 +190,7 @@ def main():
         previous = [a for a in ledger['attempts'] if a['job_id']==options.job]
         parent = None
         if previous:
-            latest = previous[-1]
-            if latest['state'] != 'partial':
-                raise ValueError('Previous attempt must be audited partial before resuming; do not duplicate work')
-            parent = latest['kernel']
+            parent = resume_parent(previous)['kernel']
         attempt = len(previous)+1
         folder = state/'submissions'/f'{options.job}-a{attempt}'
         if not options.submit:
@@ -185,6 +199,9 @@ def main():
             return
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi(); api.authenticate()
+        if previous and previous[-1]['state']=='cancelled_startup':
+            if api.kernels_status(previous[-1]['kernel']).status.name!='CANCEL_ACKNOWLEDGED':
+                raise RuntimeError('Cancelled startup must still be verified stopped before replacement')
         capacity_attempts=list(ledger['attempts'])
         for peer in (ROOT/'runs/offline-campaign/ledger.json',ROOT/'runs/offline-subset-campaign/ledger.json'):
             if peer.exists() and peer.resolve()!=path.resolve():

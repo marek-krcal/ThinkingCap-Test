@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock
 
-from cloud.dispatch_offline import build_bundle, check_capacity
+from cloud.dispatch_offline import build_bundle, check_capacity, resume_parent
 from cloud.refresh_offline import refresh
 from utils.offline import digest
 
@@ -25,6 +25,8 @@ class DispatchTests(unittest.TestCase):
             self.assertIn('a'*40, source)
             self.assertIn('b'*64, source)
             self.assertIn('2700', source)
+            self.assertIn('Collection launcher starting',source)
+            self.assertIn('timeout=90',source)
 
     def test_selected_launcher_has_distinct_namespace_and_dataset(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -99,3 +101,12 @@ class DispatchTests(unittest.TestCase):
         api.kernels_list.return_value=[SimpleNamespace(ref='draft',current_version_number=1)]
         with self.assertRaises(requests.HTTPError):
             check_capacity(api, {'attempts':[]}, 3600, ['draft'])
+
+    def test_startup_retry_requires_stopped_zero_output_and_audited_parent(self):
+        parent=dict(state='partial',kernel='bootstrap',completed_answers=8)
+        stopped=dict(state='cancelled_startup',kernel='stalled',new_answers=0,
+            completed_answers=8,parent_kernel='bootstrap',remote_status='CANCEL_ACKNOWLEDGED',verified_output_bytes=0)
+        self.assertEqual(resume_parent([parent,stopped]),parent)
+        for field,value in (('remote_status','RUNNING'),('new_answers',1),('verified_output_bytes',5),('parent_kernel','other')):
+            with self.subTest(field=field),self.assertRaises(ValueError):
+                resume_parent([parent,dict(stopped,**{field:value})])
