@@ -55,15 +55,19 @@ def check_capacity(api, ledger, timeout):
     if gpu is None or gpu.total_time_allowed is None or gpu.time_used is None or gpu.time_reserved is None:
         raise RuntimeError('Actual Kaggle quota unavailable; do not guess capacity')
     active = []
+    listed = set()
     page = 1
     while True:
         rows = api.kernels_list(mine=True, page=page, page_size=100) or []
         for row in rows:
+            listed.add(row.ref)
             status = api.kernels_status(row.ref).status.name
-            if status in ('RUNNING', 'QUEUED'):
+            if status in ('RUNNING', 'QUEUED', 'CANCEL_REQUESTED'):
                 active.append(row.ref)
         if len(rows) < 100: break
         page += 1
+    if any(a.get('state')=='submission_pending' and a['kernel'] not in listed for a in ledger['attempts']):
+        raise RuntimeError('Resolve an ambiguous submission before launching more jobs')
     if len(active) >= 2:
         raise RuntimeError('Two account sessions already active/queued: '+str(active))
     # Account quota can lag queued work. Reserve its entire declared timeout
