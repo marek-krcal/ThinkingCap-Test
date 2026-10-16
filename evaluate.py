@@ -123,7 +123,7 @@ def main():
     print(f"\nWrote {out / RESULTS}")
 
 
-def parse_arguments():
+def parse_arguments(argv=None):
     """The command line, with every default this run depends on filled in.
 
     Anything derived from a flag is derived here and nowhere else, so no two
@@ -188,7 +188,7 @@ def parse_arguments():
                         help=f"Re-grade a finished run's {RECORDS} without generating again")
     parser.add_argument('--generate-only', action='store_true',
                         help='Save reusable raw trajectories and provenance; grade separately with cloud/grade_saved.py')
-    arguments = parser.parse_args()
+    arguments = parser.parse_args(argv)
     if arguments.generate_only and arguments.regrade:
         parser.error('Choose generation or grading, not both')
     if arguments.tensor_parallel_size < 1 or arguments.batch_size < 1:
@@ -418,11 +418,12 @@ def shard_jobs(jobs, count):
     return [jobs[index::count] for index in range(count)]
 
 
-def merge_shard_records(jobs, records):
+def merge_shard_records(jobs, records, allow_partial=False):
     order = {(job["row"]["id"], job["sample"]): position
              for position, job in enumerate(jobs)}
     keys = [(record["id"], record["sample_index"]) for record in records]
-    if len(keys) != len(jobs) or set(keys) != set(order):
+    if (len(keys) != len(set(keys)) or not set(keys).issubset(order) or
+            (not allow_partial and set(keys) != set(order))):
         raise RuntimeError("Data-parallel merge has missing or duplicate generations")
     return sorted(records, key=lambda record: order[(record["id"], record["sample_index"])])
 
@@ -462,7 +463,7 @@ def generate_vllm_data_parallel(jobs, arguments, out, longest_generation):
     context = multiprocessing.get_context("spawn")
     notices = context.Queue()
     workers, completed = [], {}
-    shards = out / "shards"
+    shards = Path(getattr(arguments, 'shard_root', out / 'shards'))
     def terminate_controller(signum, frame):
         raise SystemExit("Data-parallel controller stopped")
     previous_handler = signal.signal(signal.SIGTERM, terminate_controller)
@@ -487,7 +488,7 @@ def generate_vllm_data_parallel(jobs, arguments, out, longest_generation):
             print(f"Data-parallel worker {index} finished: {stats['responses']} responses", flush=True)
         records = [record for index in range(count)
                    for record in read_jsonl(shards / str(index) / RECORDS)]
-        records = merge_shard_records(jobs, records)
+        records = merge_shard_records(jobs, records, getattr(arguments, 'allow_partial', False))
         save_records(out, records)
         arguments.startup_seconds = max(stats['engine_startup_seconds'] for stats in completed.values())
         finish_timing(arguments, started, records, "vllm", "cuda")
@@ -592,7 +593,8 @@ def generate_continuous(engine, jobs, arguments, out, tokenizer,
     return run_queue(engine, jobs, settings_for,
         lambda job, output, rid: to_record(job, output, lora, tokenizer,
                               eos_ids, open_id, close_id, rid in verified_routes),
-        out/RECORDS, lora=lora, validate_route=validate_route)
+        out/RECORDS, lora=lora, validate_route=validate_route,
+        deadline=getattr(arguments, 'queue_deadline', None))
 
 
 def generate_transformers(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id):
@@ -716,6 +718,8 @@ def build_jobs(questions, tokenizer, arguments):
         ids = tokenizer.apply_chat_template(row["messages"], tokenize=True,
                                             add_generation_prompt=True, enable_thinking=True)
         for sample in range(arguments.samples):
+            if (row['id'], sample) in getattr(arguments, 'resume_keys', set()):
+                continue
             jobs.append({"row": row, "ids": ids, "sample": sample,
                          "seed": arguments.seed + row["seed_index"] * 1000 + sample})
     return jobs

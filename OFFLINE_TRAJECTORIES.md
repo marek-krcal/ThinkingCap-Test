@@ -1,0 +1,146 @@
+# Reusable offline trajectories for SimPO / SFT
+
+This branch separates **generation** from **grading**. It does not train an
+adapter. PR #1's eager evaluation baseline and other experiment branches remain
+unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
+
+## Frozen recipe and coverage
+
+- Model: `Qwen/Qwen3-0.6B`, revision `c1899de289a04d12100db370d81485cdf75e47ca`.
+- Thinking chat template; temperature **0.6**, top-p **0.95**, top-k **20**.
+- Completion ceilings: **8,192 MBPP**, **4,096 all other datasets**. These are
+  output-token limits, not prompt-plus-output limits. No 1,024-token RL cap or
+  temperature-1 online-RL recipe is used here.
+- Eager FP16, one model replica per T4, two replicas per session, continuous queue,
+  64 active sequences/GPU, 2,048 prefill tokens/step, memory fraction 0.70.
+- Eight independently seeded trajectories per prompt. Original global prompt
+  indices and sample indices survive sharding and resumption; no re-seeding a
+  remaining subset. Changing queue composition can still change sampled outputs;
+  fixed seeds are not a promise of bit-identical generation across schedules.
+
+| Partition | Prompts | Answers at 8/prompt |
+|---|---:|---:|
+| Benchmark test | 2,759 | 22,072 |
+| Training | 46,812 | 374,496 |
+| Validation (200/source) | 800 | 6,400 |
+| Total | 50,371 | 402,968 |
+
+The README's original preparation logic is retained, including Skywork's integer
+answer/easy-band filter and validation split seed 0. Before validation splitting:
+GSM8K 7,473; Skywork 28,147; CommonsenseQA 9,741; ARC Easy 2,251. Each Hugging Face
+source revision and each prepared file's SHA-256 are recorded in the input plan.
+The full benchmark cohort hash is
+`16df64e67336b8a1cfa49298cd27e0e1f265927d12ad97f064f3968414d55a86`.
+
+Train, validation and test stay in separate files/shards. Test outputs are for
+evaluation/debugging, never automatically mixed into offline training. Exact
+prepared-message overlap is audited; this is not a guarantee of semantic
+decontamination across upstream datasets. Source datasets retain their licenses;
+the prepared input and generated output are private on Kaggle.
+
+## Generate once, grade later
+
+From the repository root, on a suitable two-GPU environment:
+
+```sh
+python evaluate.py --out runs/raw400 --generate-only --samples 1 \
+  --limit-per-benchmark 100 --backend vllm --dtype half \
+  --data-parallel-size 2 --continuous-queue --max-num-seqs 64 \
+  --max-num-batched-tokens 2048 --gpu-memory-utilization 0.70
+python cloud/grade_saved.py --source runs/raw400 --out runs/graded400
+```
+
+`cloud/verify_offline.py` runs that 400-answer check, then grades the same saved
+answers twice. It requires identical verdicts and unchanged raw-file hashes.
+Generation calls the same queue and token-to-record conversion as evaluation;
+grading does not load a language model or generate replacements.
+
+Each raw directory contains:
+
+- `prompts.jsonl`: full prompt/gold/grader/source metadata and exact prompt token IDs.
+- `records.jsonl`: question/sample ID, stable seed, text, parsed final response,
+  exact completion token IDs/counts, reasoning count, finish/stop reason,
+  truncation and malformed-thinking flags. It is ungraded and immutable.
+- `generation-manifest.json`: model, revision, sampling, caps, source/cohort
+  provenance, expected/completed counts, artifact hashes, timings and explicit
+  `completed`/`partial` status.
+- `completed-keys.jsonl`: small coverage index for the new answers only.
+
+Grading writes to another fresh directory, never overwrites raw trajectories,
+and records its source hashes and `regenerated_answers: 0`. Test answers use the
+original benchmark graders. Training/validation answers use the repository's
+task-specific correctness checks. Truncated or malformed answers cannot earn
+correctness. Grader infrastructure errors fail the grading audit rather than
+silently becoming wrong answers. No token-length reward or pair selection is
+introduced: later SimPO/SFT experiments can make that choice from these records.
+
+## Full collection and resumption
+
+Local preparation:
+
+```sh
+python cloud/prepare_offline_data.py --out data/offline-input
+python cloud/plan_offline_collection.py --data data/offline-input
+```
+
+`data/offline-input/collection-plan.json` freezes 127 disjoint shards of up to
+400 prompts each. The current frozen plan SHA-256 is
+`eb589b2ff243e10377c7e7525ae28844e0d8b488166c6b01d36dd5ff84c69633`.
+Input files are uploaded privately as `krcalkrcal/thinkingcap-offline-input`.
+The source checkout, environments, weights, compiler cache and intermediate
+per-GPU record copies stay in `/kaggle/temp`, not Kaggle's archived output.
+
+After the 400-question verification passes, the explicit dispatcher builds a
+pinned launcher and submits one shard:
+
+```sh
+.venv-kaggle/bin/python cloud/dispatch_offline.py --job test-000 \
+  --commit FULL_PUBLISHED_COMMIT_SHA --submit
+.venv-kaggle/bin/python cloud/refresh_offline.py
+```
+
+The dispatcher requires a passing verification artifact; it checks actual quota
+and existing account sessions, allows at most two concurrent sessions (two pairs
+of T4s), and records submission intent before network calls. It uses a full
+commit ID, exact plan hash and unique notebook per attempt. A lock and ledger
+prevent accidental duplicate submissions. An ambiguous submission is investigated,
+not blindly retried. Defaults: 45-minute generation/startup budget and one-hour
+outer safety timeout, leaving time for setup/grading/archival. Actual shard size
+is preserved even if a session ends partially complete.
+
+The shared queue saves each completed trajectory immediately. At the collection
+deadline it aborts unfinished requests and seals an explicitly partial artifact,
+then grades the saved answers and exits normally. The original evaluation path
+has no such partial mode and still requires complete coverage.
+
+`collection/collection-index.json` carries cumulative completed question/sample
+keys for that shard, plan hash, parent-index provenance and remaining coverage.
+For a partial shard, the next unique attempt attaches the previous successful
+notebook output and skips exactly those keys. Earlier raw answers stay in their
+original immutable Kaggle output; only new answers are written on the next
+attempt. Never delete those old versions. A fatal run with unsealed outputs must
+be recovered explicitly; it is not automatically accepted as an attachable input.
+
+The local ledger is `runs/offline-campaign/ledger.json`. Refresh downloads only
+small manifests, summaries, provenance and per-answer `labels.jsonl`, not raw
+trajectory corpora/environments/weights. Labels support local correctness, cap
+rate and future preference-pool audits without downloading multi-GB text files.
+Failed or unaudited attempts block automatic resubmission of that shard. Raw
+generation is preserved even if subsequent grading needs repair.
+
+The full 402,968-answer target is larger than the current free weekly quota.
+Use legitimate quota resets and preserve the full target; do not silently
+subsample, lower caps, buy compute, or evade account limits. Measure ETA from
+actual per-source output lengths/throughput rather than assuming the 400-question
+mix represents every training dataset. Monitoring is through the existing
+three-minute in-chat automation; the local app/host must remain online for it.
+Kaggle computation itself continues remotely.
+
+## Validation status
+
+Local regression tests cover the unchanged evaluation queue, raw artifact hashes,
+seed/cap/token validation, separate grading without regeneration, partial queue
+shutdown, resume identity, fixed private launchers and quota/concurrency guards.
+The live 400-answer GPU verification and first collection shards must be audited
+before declaring the complete pipeline or corpus finished. No training runs are
+part of this collection request.

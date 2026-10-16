@@ -159,6 +159,17 @@ try:
         command = [python, 'cloud/run_batched_rl_campaign.py']
     if os.environ.get('THINKINGCAP_OFFLINE_VERIFY') == '1':
         command = [python, 'cloud/verify_offline.py']
+    if os.environ.get('THINKINGCAP_OFFLINE_JOB'):
+        data_manifest = next(pathlib.Path('/kaggle/input').rglob('collection-plan.json'))
+        command = [python, 'cloud/collect_offline.py', '--data', str(data_manifest.parent),
+            '--job', os.environ['THINKINGCAP_OFFLINE_JOB'],
+            '--expected-plan-sha', os.environ['THINKINGCAP_PLAN_SHA'],
+            '--generation-seconds', os.environ.get('THINKINGCAP_GENERATION_SECONDS', '2700')]
+        resume_indexes = list(pathlib.Path('/kaggle/input').rglob('collection-index.json'))
+        if len(resume_indexes) > 1:
+            raise ValueError('Attach at most one previous attempt for this shard')
+        if resume_indexes:
+            command += ['--resume-index', str(resume_indexes[0])]
     run('evaluation_total', command, root, timeout=max(1, hard_stop - time.time()))
 finally:
     stopped.set()

@@ -9,6 +9,11 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def requested_keys(questions, arguments):
+    skipped = {tuple(key) for key in getattr(arguments, 'resume_keys', [])}
+    return {(q['id'], i) for q in questions for i in range(arguments.samples)}-skipped
+
+
 def save_generation(out, arguments, suite, questions, records, kind='benchmark'):
     from evaluate import caps_in_use, sampling_parameters
     out = Path(out)
@@ -25,13 +30,16 @@ def save_generation(out, arguments, suite, questions, records, kind='benchmark')
         status='generating' if records is None else 'completed',
         arguments=vars(arguments), suite=suite, caps=caps_in_use(questions, arguments),
         sampling=sampling_parameters(arguments), prompts_sha256=digest(question_file),
-        expected_answers=len(questions)*arguments.samples,
+        expected_answers=len(requested_keys(questions, arguments)),
         generation=getattr(arguments, 'generation_stats', None))
     if records is not None:
-        expected = {(q['id'], i) for q in questions for i in range(arguments.samples)}
+        expected = requested_keys(questions, arguments)
         keys = [(r['id'], r['sample_index']) for r in records]
-        if len(keys) != len(expected) or set(keys) != expected:
+        if (len(keys) != len(set(keys)) or not set(keys).issubset(expected) or
+                (not getattr(arguments, 'allow_partial', False) and set(keys) != expected)):
             raise ValueError('Generation missing or duplicating requested trajectories')
+        if set(keys) != expected:
+            manifest['status'] = 'partial'
         manifest['records_sha256'] = digest(out/'records.jsonl')
         manifest['completed_answers'] = len(records)
         with (out/'completed-keys.jsonl').open('w') as stream:
@@ -41,23 +49,30 @@ def save_generation(out, arguments, suite, questions, records, kind='benchmark')
     return manifest
 
 
-def read_generation(source):
+def read_generation(source, allow_partial=False):
     source = Path(source)
     manifest = json.loads((source/'generation-manifest.json').read_text())
-    if manifest['status'] != 'completed':
+    if manifest['status'] != 'completed' and not (allow_partial and manifest['status'] == 'partial'):
         raise ValueError('Generation is incomplete; do not report a full evaluation')
     for name, field in (('prompts.jsonl', 'prompts_sha256'), ('records.jsonl', 'records_sha256')):
         if digest(source/name) != manifest[field]:
             raise ValueError(f'Generation artifact hash mismatch: {name}')
     questions = [json.loads(line) for line in (source/'prompts.jsonl').read_text().splitlines()]
     records = [json.loads(line) for line in (source/'records.jsonl').read_text().splitlines()]
-    expected = {(q['id'], i) for q in questions for i in range(manifest['arguments']['samples'])}
+    expected = requested_keys(questions, SimpleNamespace(**manifest['arguments']))
     keys = [(r['id'], r['sample_index']) for r in records]
-    if len(keys) != len(expected) or set(keys) != expected:
+    if (len(keys) != len(set(keys)) or not set(keys).issubset(expected) or
+            (manifest['status'] == 'completed' and set(keys) != expected)):
         raise ValueError('Missing/duplicate stored trajectories')
     by_id = {q['id']: q for q in questions}
+    if len(by_id) != len(questions) or manifest['expected_answers'] != len(expected):
+        raise ValueError('Prompt identities or declared coverage invalid')
+    if manifest['completed_answers'] != len(records):
+        raise ValueError('Declared completed count differs from saved answers')
     for record in records:
         row = by_id[record['id']]
+        if record['dataset'] != row['dataset']:
+            raise ValueError('Stored answer dataset mismatch')
         if record['seed'] != manifest['arguments']['seed']+row['seed_index']*1000+record['sample_index']:
             raise ValueError('Stored generation seed mismatch')
         if len(record['completion_tokens']) != record['output_tokens']:
@@ -71,15 +86,14 @@ def read_generation(source):
     return manifest, questions, records
 
 
-def grade_saved(source, out, questions_root='questions', workers=4, sandbox=None):
+def grade_saved(source, out, questions_root='questions', workers=4, sandbox=None, allow_partial=False):
     """Never load a language model or regenerate; preserve raw source artifacts."""
-    from evaluate import (load_suite, grading_context, grade_all, collect, save_results,
-                          save_records, report)
+    from evaluate import grading_context, grade_all, save_records
     from utils.train.rewards import is_task_correct
     source, out = Path(source), Path(out)
     if out.exists():
         raise FileExistsError(out)
-    manifest, questions, records = read_generation(source)
+    manifest, questions, records = read_generation(source, allow_partial=allow_partial)
     arguments = SimpleNamespace(**manifest['arguments'])
     arguments.generation_stats = manifest['generation']
     arguments.workers, arguments.sandbox = workers, sandbox
@@ -88,20 +102,19 @@ def grade_saved(source, out, questions_root='questions', workers=4, sandbox=None
             record.pop(field, None)
     out.mkdir(parents=True, exist_ok=False)
     if manifest['kind'] == 'benchmark':
-        suite = load_suite(Path(questions_root), bool(manifest['suite'].get('smoke')))
-        if (suite['cohort_sha256'] != manifest['suite']['cohort_sha256'] or
-                suite['revisions'] != manifest['suite']['revisions']):
-            raise ValueError('Benchmark/grader provenance mismatch')
-        suite.update(manifest['suite'])
-        # Refresh location-dependent checker paths rather than trusting a cloud path.
-        fresh = load_suite(Path(questions_root), bool(suite.get('smoke')))
-        for key in ('evalplus', 'bfcl', 'ifeval', 'mbpp'):
-            suite[key] = fresh[key]
-        grading = grading_context(suite, arguments)
-        grade_all(questions, records, grading)
-        results, failed = collect(questions, records, arguments.samples)
-        save_results(out, arguments, suite, grading, results, failed, manifest['caps'])
-        print(report(results, suite, failed), flush=True)
+        suite = _suite_for_grading(questions_root, manifest)
+        if (manifest['status'] == 'partial' or getattr(arguments, 'resume_keys', []) or
+                manifest['suite'].get('collection_shard')):
+            # Grade only complete answers in this shard; do not fabricate absent
+            # answers or publish a full-benchmark score for a partial collection.
+            active = {r['id'] for r in records}
+            grading = grading_context(suite, arguments)
+            grade_all([q for q in questions if q['id'] in active], records, grading)
+            results = dict(partial_collection=True, answers=len(records),
+                correct=sum(r.get('correct') is True for r in records))
+            (out/'results.json').write_text(json.dumps(results, indent=2)+'\n')
+        else:
+            _grade_benchmark(out, questions_root, manifest, arguments, questions, records)
     else:
         by_id = {q['id']: q for q in questions}
         for record in records:
@@ -121,3 +134,25 @@ def grade_saved(source, out, questions_root='questions', workers=4, sandbox=None
     if any(r.get('grading_error') or type(r.get('correct')) is not bool for r in records):
         raise RuntimeError('Saved-answer grading has infrastructure errors')
     return records
+
+
+def _suite_for_grading(questions_root, manifest):
+    from evaluate import load_suite
+    fresh = load_suite(Path(questions_root), bool(manifest['suite'].get('smoke')))
+    if (fresh['cohort_sha256'] != manifest['suite']['cohort_sha256'] or
+            fresh['revisions'] != manifest['suite']['revisions']):
+        raise ValueError('Benchmark/grader provenance mismatch')
+    suite = dict(manifest['suite'])
+    for key in ('evalplus', 'bfcl', 'ifeval', 'mbpp'):
+        suite[key] = fresh[key]
+    return suite
+
+
+def _grade_benchmark(out, questions_root, manifest, arguments, questions, records):
+    from evaluate import grading_context, grade_all, collect, save_results, report
+    suite = _suite_for_grading(questions_root, manifest)
+    grading = grading_context(suite, arguments)
+    grade_all(questions, records, grading)
+    results, failed = collect(questions, records, arguments.samples)
+    save_results(out, arguments, suite, grading, results, failed, manifest['caps'])
+    print(report(results, suite, failed), flush=True)

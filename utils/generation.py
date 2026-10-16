@@ -1,8 +1,10 @@
 """Shared durable continuous queue for evaluation and reusable offline data."""
 import json
+import time
 
 
-def run_queue(engine, jobs, settings_for, record_for, path, lora=None, validate_route=None):
+def run_queue(engine, jobs, settings_for, record_for, path, lora=None, validate_route=None,
+              deadline=None):
     wanted = {f'eval-{i}': job for i, job in enumerate(jobs)}
     for request_id, job in wanted.items():
         engine.add_request(request_id, {'prompt_token_ids': job['ids']},
@@ -12,6 +14,10 @@ def run_queue(engine, jobs, settings_for, record_for, path, lora=None, validate_
     completed = {}
     with path.open('w') as stream:
         while engine.has_unfinished_requests():
+            if deadline is not None and time.time() >= deadline:
+                for request_id in wanted.keys()-completed.keys():
+                    engine.abort_request(request_id)
+                break
             for output in engine.step():
                 if not output.finished:
                     continue
@@ -24,6 +30,6 @@ def run_queue(engine, jobs, settings_for, record_for, path, lora=None, validate_
                 stream.flush()
                 if len(completed) % 20 == 0 or len(completed) == len(jobs):
                     print(f'Continuous queue: {len(completed)}/{len(jobs)} completed', flush=True)
-    if set(completed) != set(wanted):
+    if deadline is None and set(completed) != set(wanted):
         raise RuntimeError('Continuous queue lost generation jobs')
-    return [completed[request_id] for request_id in wanted]
+    return [completed[request_id] for request_id in wanted if request_id in completed]
