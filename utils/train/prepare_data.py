@@ -33,29 +33,29 @@ def with_options(question, choices):
     return f"{question}\n\n{options}"
 
 
-def gsm8k():
-    for r in load_dataset("openai/gsm8k", "main", split="train"):
+def gsm8k(revision=None):
+    for r in load_dataset("openai/gsm8k", "main", split="train", revision=revision):
         answer = r["answer"].split("####")[-1].strip().replace(",", "")
         yield row(r["question"], MATH_INSTRUCTION, answer, "math", "gsm8k")
 
 
-def skywork():
+def skywork(revision=None):
     # The easy band with whole-number answers: DeepSeek-R1-Distill-Qwen-1.5B failed at most 8 of 16 tries.
-    for r in load_dataset("Skywork/Skywork-OR1-RL-Data", split="math"):
+    for r in load_dataset("Skywork/Skywork-OR1-RL-Data", split="math", revision=revision):
         gold = json.loads(r["reward_model"]["ground_truth"])
         if len(gold) == 1 and re.fullmatch(r"-?\d+", gold[0].strip()) \
                 and r["extra_info"]["model_difficulty"]["DeepSeek-R1-Distill-Qwen-1.5B"] <= 8:
             yield row(r["prompt"][-1]["content"], MATH_INSTRUCTION, gold[0].strip(), "math", "skywork")
 
 
-def commonsense_qa():
-    for r in load_dataset("tau/commonsense_qa", split="train"):
+def commonsense_qa(revision=None):
+    for r in load_dataset("tau/commonsense_qa", split="train", revision=revision):
         yield row(with_options(r["question"], r["choices"]), CHOICE_INSTRUCTION, r["answerKey"],
                   "multiple_choice", "commonsense_qa")
 
 
-def arc_easy():
-    for r in load_dataset("allenai/ai2_arc", "ARC-Easy", split="train"):
+def arc_easy(revision=None):
+    for r in load_dataset("allenai/ai2_arc", "ARC-Easy", split="train", revision=revision):
         yield row(with_options(r["question"], r["choices"]), CHOICE_INSTRUCTION, r["answerKey"],
                   "multiple_choice", "arc_easy")
 

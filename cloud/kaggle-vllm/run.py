@@ -157,6 +157,8 @@ try:
         command = [python, 'cloud/reevaluate_rl.py']
     if os.environ.get('THINKINGCAP_BATCHED_RL') == '1':
         command = [python, 'cloud/run_batched_rl_campaign.py']
+    if os.environ.get('THINKINGCAP_OFFLINE_VERIFY') == '1':
+        command = [python, 'cloud/verify_offline.py']
     run('evaluation_total', command, root, timeout=max(1, hard_stop - time.time()))
 finally:
     stopped.set()

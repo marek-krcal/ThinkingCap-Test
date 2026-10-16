@@ -47,6 +47,7 @@ import queue
 import signal
 from pathlib import Path
 import time
+from utils.generation import run_queue
 
 from utils.eval import sandbox
 from utils.eval.benchmarks import paths, sha256
@@ -99,6 +100,13 @@ def main():
     prepare_output(out, arguments.regrade)
 
     # records are the answers: one generation per question per sample, graded.
+    if arguments.generate_only:
+        from utils.offline import save_generation
+        save_generation(out, arguments, suite, questions, None, kind='benchmark')
+        records = generate(questions, arguments, out)
+        save_generation(out, arguments, suite, questions, records, kind='benchmark')
+        print(f'Saved {len(records)} ungraded trajectories to {out}', flush=True)
+        return
     grading = grading_context(suite, arguments)
     records = reload_records(out) if arguments.regrade else generate(questions, arguments, out)
     record_event(out, 'grading_started')
@@ -178,7 +186,11 @@ def parse_arguments():
                         help="Parallel MBPP+ grading processes")
     parser.add_argument("--regrade", action="store_true",
                         help=f"Re-grade a finished run's {RECORDS} without generating again")
+    parser.add_argument('--generate-only', action='store_true',
+                        help='Save reusable raw trajectories and provenance; grade separately with cloud/grade_saved.py')
     arguments = parser.parse_args()
+    if arguments.generate_only and arguments.regrade:
+        parser.error('Choose generation or grading, not both')
     if arguments.tensor_parallel_size < 1 or arguments.batch_size < 1:
         parser.error("--tensor-parallel-size and --batch-size must be positive")
     if arguments.data_parallel_size < 1:
@@ -541,7 +553,7 @@ def generate_vllm(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id,
             batch = jobs[start:start + batch_size]
             settings = [SamplingParams(max_tokens=token_cap(job["row"]["dataset"], arguments),
                                        seed=job["seed"], stop_token_ids=list(eos_ids),
-                                       **SAMPLING) for job in batch]
+                                       **sampling_parameters(arguments)) for job in batch]
             outputs = model.generate([{"prompt_token_ids": job["ids"]} for job in batch],
                                      settings, lora_request=lora)
             if len(outputs) != len(batch):
@@ -562,13 +574,12 @@ def generate_continuous(engine, jobs, arguments, out, tokenizer,
     """One pending queue, no Python-side batch barriers; durable per-answer output."""
     from vllm import SamplingParams
     from vllm.sampling_params import RequestOutputKind
-    wanted = {f'eval-{index}': job for index, job in enumerate(jobs)}
     verified_routes = set()
-    for request_id, job in wanted.items():
-        settings = SamplingParams(max_tokens=token_cap(job['row']['dataset'], arguments),
+    def settings_for(job):
+        return SamplingParams(max_tokens=token_cap(job['row']['dataset'], arguments),
             seed=job['seed'], stop_token_ids=list(eos_ids),
-            output_kind=RequestOutputKind.FINAL_ONLY, **SAMPLING)
-        engine.add_request(request_id, {'prompt_token_ids': job['ids']}, settings, lora_request=lora)
+            output_kind=RequestOutputKind.FINAL_ONLY, **sampling_parameters(arguments))
+    def validate_route(request_id):
         if lora is not None:
             # vLLM 0.11.2 V1 omits lora_request from RequestOutput. Verify the
             # actual processed input state instead, before step() removes it.
@@ -578,25 +589,10 @@ def generate_continuous(engine, jobs, arguments, out, tokenizer,
             if state is None or name is None or state.lora_name != name:
                 raise ValueError('Adapter routing mismatch in engine request state')
             verified_routes.add(request_id)
-    completed = {}
-    with (out / RECORDS).open('w') as stream:
-        while engine.has_unfinished_requests():
-            for output in engine.step():
-                if not output.finished:
-                    continue
-                request_id = output.request_id
-                if request_id not in wanted or request_id in completed:
-                    raise RuntimeError('Unknown or duplicate continuous-queue answer')
-                record = to_record(wanted[request_id], output, lora, tokenizer,
-                                   eos_ids, open_id, close_id, request_id in verified_routes)
-                completed[request_id] = record
-                stream.write(json.dumps(record) + '\n')
-                stream.flush()
-                if len(completed) % 20 == 0 or len(completed) == len(jobs):
-                    print(f'Continuous queue: {len(completed)}/{len(jobs)} completed', flush=True)
-    if set(completed) != set(wanted):
-        raise RuntimeError('Continuous queue lost generation jobs')
-    return [completed[request_id] for request_id in wanted]
+    return run_queue(engine, jobs, settings_for,
+        lambda job, output, rid: to_record(job, output, lora, tokenizer,
+                              eos_ids, open_id, close_id, rid in verified_routes),
+        out/RECORDS, lora=lora, validate_route=validate_route)
 
 
 def generate_transformers(jobs, arguments, out, tokenizer, eos_ids, open_id, close_id):
@@ -736,6 +732,7 @@ def to_record(job, output, lora, tokenizer, eos_ids, open_id, close_id, verified
     # vLLM can stop on the model's EOS IDs as well as our explicit tokenizer
     # stop IDs. The tokenizer's single EOS is not an exhaustive stop policy.
     completion = output.outputs[0]
+    record['completion_tokens'] = list(completion.token_ids)
     finish_reason = getattr(completion, 'finish_reason', None)
     if finish_reason is not None:
         if finish_reason not in ('stop', 'length', 'abort'):
@@ -748,6 +745,10 @@ def to_record(job, output, lora, tokenizer, eos_ids, open_id, close_id, verified
         record['adapter_route_verified_by'] = 'engine_request_state' if used is None else 'output_metadata'
         record['adapter_id'] = lora.lora_int_id
     return record
+
+
+def sampling_parameters(arguments):
+    return getattr(arguments, 'sampling', SAMPLING)
 
 
 def record_from_tokens(job, tokens, tokenizer, eos_ids, open_id, close_id):
@@ -852,7 +853,7 @@ def save_results(out, arguments, suite, grading, results, failed, caps):
         "model": arguments.model, "revision": arguments.revision,
         "adapter": str(Path(arguments.adapter).resolve()) if arguments.adapter else None,
         "benchmarks": arguments.benchmarks,
-        "samples": arguments.samples, "seed": arguments.seed, "sampling": SAMPLING,
+        "samples": arguments.samples, "seed": arguments.seed, "sampling": sampling_parameters(arguments),
         "backend": arguments.backend, "device": arguments.device, "dtype": arguments.dtype,
         "tensor_parallel_size": getattr(arguments, "tensor_parallel_size", 1),
         "data_parallel_size": getattr(arguments, "data_parallel_size", 1),
