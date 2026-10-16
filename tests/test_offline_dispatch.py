@@ -26,6 +26,16 @@ class DispatchTests(unittest.TestCase):
             self.assertIn('b'*64, source)
             self.assertIn('2700', source)
 
+    def test_selected_launcher_has_distinct_namespace_and_dataset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp)/'selected'
+            kernel=build_bundle(folder,'train-000',2,'a'*40,'b'*64,'old',2700,3600,
+                                'krcalkrcal/thinkingcap-offline-subset-input','ThinkingCap offline subset')
+            self.assertEqual(kernel,'krcalkrcal/thinkingcap-offline-subset-train-000-a2')
+            metadata=json.loads((folder/'kernel-metadata.json').read_text())
+            self.assertEqual(metadata['dataset_sources'],['krcalkrcal/thinkingcap-offline-subset-input'])
+            self.assertIn('old',metadata['kernel_sources'])
+
     def api(self, active=(), used=1000, reserved=0):
         api = MagicMock()
         gpu = SimpleNamespace(total_time_allowed=datetime.timedelta(seconds=21600),

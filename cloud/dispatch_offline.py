@@ -4,6 +4,7 @@ This is an explicit dispatcher, not a polling loop. The in-chat monitor chooses
 the next unfinished shard, inspects its logs, and calls this only when safe.
 """
 import argparse
+from contextlib import ExitStack
 import fcntl
 import json
 from pathlib import Path
@@ -27,7 +28,8 @@ def retry_read(operation):
             time.sleep(attempt+1)
 
 
-def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generation_seconds, timeout):
+def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generation_seconds, timeout,
+                 dataset='krcalkrcal/thinkingcap-offline-input', prefix='ThinkingCap offline'):
     if not re.fullmatch(r'[0-9a-f]{40}', commit):
         raise ValueError('Pin a full commit ID')
     if not re.fullmatch(r'(test|train|validation)-\d{3}', job_id) or attempt < 1:
@@ -35,11 +37,14 @@ def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generatio
     if not 60 <= generation_seconds <= timeout-600 or timeout > 10800:
         raise ValueError('Reserve at least ten minutes for setup, grading and archival')
     folder.mkdir(parents=True, exist_ok=False)
-    title = f'ThinkingCap offline {job_id} a{attempt}'
+    if not re.fullmatch(r'ThinkingCap [a-z -]+', prefix):
+        raise ValueError('Invalid collection namespace')
+    title = f'{prefix} {job_id} a{attempt}'
     slug = title.lower().replace(' ', '-')
     kernel = 'krcalkrcal/'+slug
     environment = dict(THINKINGCAP_REF=commit, THINKINGCAP_MODE='full', THINKINGCAP_SAMPLES='8',
         THINKINGCAP_OFFLINE_JOB=job_id, THINKINGCAP_GENERATION_SECONDS=str(generation_seconds),
+        THINKINGCAP_OFFLINE_DATASET=dataset,
         THINKINGCAP_TIMEOUT_SECONDS=str(timeout), THINKINGCAP_PLAN_SHA=plan_hash)
     # Build artifacts: this tiny launcher is generated from fixed fields. There
     # are no credentials, user-code interpolation, or shell substitutions.
@@ -52,7 +57,7 @@ def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generatio
     (folder/'run.py').write_text(source)
     metadata = dict(id=kernel, title=title, code_file='run.py', language='python',
         kernel_type='script', is_private='true', enable_gpu='true', enable_internet='true',
-        dataset_sources=['krcalkrcal/thinkingcap-offline-input'], competition_sources=[],
+        dataset_sources=[dataset], competition_sources=[],
         kernel_sources=['krcalkrcal/thinkingcap-vllm-timing']+([previous] if previous else []),
         model_sources=[])
     (folder/'kernel-metadata.json').write_text(json.dumps(metadata, indent=2)+'\n')
@@ -75,7 +80,8 @@ def check_capacity(api, ledger, timeout, verified_inactive_drafts=()):
             # Kaggle's lightweight listing can omit enable_gpu and deserialize
             # it as False even for a T4 run. Exclude only our known CPU launchers.
             if ('/thinkingcap-offline-grade-' in row.ref or
-                    '/thinkingcap-offline-cpu-verification' in row.ref):
+                    '/thinkingcap-offline-cpu-verification' in row.ref or
+                    '/thinkingcap-offline-subset-reconcile' in row.ref):
                 continue
             try:
                 status = retry_read(lambda: api.kernels_status(row.ref)).status.name
@@ -123,6 +129,9 @@ def main():
     parser.add_argument('--generation-seconds', type=int, default=2700)
     parser.add_argument('--timeout', type=int, default=3600)
     parser.add_argument('--submit', action='store_true')
+    parser.add_argument('--state', default='runs/offline-campaign')
+    parser.add_argument('--dataset', default='krcalkrcal/thinkingcap-offline-input')
+    parser.add_argument('--prefix', default='ThinkingCap offline')
     parser.add_argument('--verified-inactive-draft', action='append', default=[],
         help='Exact draft-only ref just verified OFF in its editor; not a persistent exemption')
     options = parser.parse_args()
@@ -132,6 +141,9 @@ def main():
         selection = json.loads(selection_file.read_text())
         if digest(data/'train.jsonl') != selection['train_sha256']:
             raise RuntimeError('Training scope changed to the selected subset: migrate its plan/ledger and reuse saved answers before dispatch')
+        if (options.state=='runs/offline-campaign' or options.prefix=='ThinkingCap offline' or
+                options.dataset=='krcalkrcal/thinkingcap-offline-input'):
+            raise RuntimeError('Selected training requires its own state, notebook namespace and private input')
     plan_file = data/'collection-plan.json'
     plan_hash = digest(plan_file)
     plan = json.loads(plan_file.read_text())
@@ -142,12 +154,20 @@ def main():
             not verification.get('repeated_grading_identical') or
             verification.get('regenerated_for_grading') != 0):
         raise ValueError('400-answer offline verification has not passed')
-    state = ROOT/'runs/offline-campaign'
+    state = ROOT/options.state
     state.mkdir(parents=True, exist_ok=True)
-    with (state/'dispatch.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with ExitStack() as stack:
+        global_state=ROOT/'runs/offline-campaign';global_state.mkdir(parents=True,exist_ok=True)
+        for lock_path in sorted({global_state/'dispatch.lock',state/'dispatch.lock'}):
+            lock=stack.enter_context(lock_path.open('a'))
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         path = state/'ledger.json'
         ledger = json.loads(path.read_text()) if path.exists() else dict(plan_sha256=plan_hash, attempts=[])
+        if (options.job.startswith('train-') and selection_file.exists() and
+                ledger.get('reconcile_state')!='audited'):
+            raise RuntimeError('Selected training requires the audited CPU reuse bootstrap before generation')
+        if ledger.get('reuse_pending'):
+            raise RuntimeError('Reconcile completed old outputs before generating selected training')
         if ledger['plan_sha256'] != plan_hash:
             raise ValueError('Ledger belongs to another frozen plan')
         previous = [a for a in ledger['attempts'] if a['job_id']==options.job]
@@ -165,11 +185,15 @@ def main():
             return
         from kaggle.api.kaggle_api_extended import KaggleApi
         api = KaggleApi(); api.authenticate()
-        quota = check_capacity(api, ledger, options.timeout, options.verified_inactive_draft)
+        capacity_attempts=list(ledger['attempts'])
+        for peer in (ROOT/'runs/offline-campaign/ledger.json',ROOT/'runs/offline-subset-campaign/ledger.json'):
+            if peer.exists() and peer.resolve()!=path.resolve():
+                capacity_attempts.extend(json.loads(peer.read_text())['attempts'])
+        quota = check_capacity(api, dict(attempts=capacity_attempts), options.timeout, options.verified_inactive_draft)
         if parent and api.kernels_status(parent).status.name != 'COMPLETE':
             raise RuntimeError('Previous output must be COMPLETE and attachable, not running or failed')
         kernel = build_bundle(folder, options.job, attempt, options.commit, plan_hash,
-            parent, options.generation_seconds, options.timeout)
+            parent, options.generation_seconds, options.timeout, options.dataset, options.prefix)
         row = dict(job_id=options.job, attempt=attempt, kernel=kernel, commit=options.commit,
             timeout=options.timeout, submitted_at=time.time(), state='submission_pending', quota_before=quota,
             completed_answers=previous[-1]['completed_answers'] if previous else 0,

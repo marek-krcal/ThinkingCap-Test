@@ -11,7 +11,7 @@ from evaluate import BASE_MODEL, BASE_REVISION, load_suite
 from utils.eval.recipe import SAMPLING, MAX_TOKENS, DEFAULT_MAX_TOKENS
 
 
-def build_plan(root, questions, shard_size=400):
+def build_plan(root, questions, shard_size=400, splits=('test', 'train', 'validation')):
     root, questions = Path(root), Path(questions)
     manifest = json.loads((root/'data-manifest.json').read_text())
     suite = load_suite(questions)
@@ -23,7 +23,7 @@ def build_plan(root, questions, shard_size=400):
     manifest['files']['test.jsonl'] = dict(prompts=len(rows), sha256=digest(root/'test.jsonl'),
         counts=dict(Counter(r['dataset'] for r in rows)))
     jobs = []
-    for split in ('test', 'train', 'validation'):
+    for split in splits:
         filename = split+'.jsonl'
         assert digest(root/filename) == manifest['files'][filename]['sha256']
         count = manifest['files'][filename]['prompts']
@@ -47,6 +47,7 @@ def build_plan(root, questions, shard_size=400):
         data=manifest, benchmark_suite=suite, jobs=jobs,
         exact_message_hashes_crossing_splits=sum(len(v)>1 for v in seen.values()),
         expected_answers=sum(job['expected_answers'] for job in jobs))
+    plan['collection_splits'] = list(splits)
     (root/'collection-plan.json').write_text(json.dumps(plan, indent=2)+'\n')
     print(json.dumps(dict(jobs=len(jobs), expected_answers=plan['expected_answers'],
         files=manifest['files'], plan_sha256=digest(root/'collection-plan.json')), indent=2))
@@ -57,5 +58,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data', default='data/offline-input')
     parser.add_argument('--questions', default='questions')
+    parser.add_argument('--splits', nargs='+', choices=['test','train','validation'],
+                        default=['test','train','validation'])
     options = parser.parse_args()
-    build_plan(options.data, options.questions)
+    build_plan(options.data, options.questions, splits=tuple(options.splits))

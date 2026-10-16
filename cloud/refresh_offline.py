@@ -1,5 +1,6 @@
 """Refresh the collection ledger using small metadata only; never fetch weights/raw corpora."""
 import fcntl
+import argparse
 from collections import Counter
 import json
 from pathlib import Path
@@ -104,10 +105,9 @@ def refresh(api, data, state):
     ledger['progress']['partitions'] = {k:dict(v) for k,v in by_split.items()}
     if ledger['progress']['completed_shards'] == len(plan['jobs']):
         expected = set()
-        for split in ('test','train','validation'):
-            for line in (data/(split+'.jsonl')).read_text().splitlines():
-                row = json.loads(line)
-                expected.update((row['id'], i) for i in range(8))
+        for job in plan['jobs']:
+            _, _, questions = load_job(data, job['id'])
+            expected.update((row['id'], i) for row in questions for i in range(8))
         if set(by_key) != expected:
             raise ValueError('Full corpus does not match frozen requested coverage')
         ledger['progress']['full_coverage_verified'] = True
@@ -117,9 +117,13 @@ def refresh(api, data, state):
 
 
 if __name__ == '__main__':
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--data',default='data/offline-input')
+    parser.add_argument('--state',default='runs/offline-campaign')
+    options=parser.parse_args()
     from kaggle.api.kaggle_api_extended import KaggleApi
     api = KaggleApi(); api.authenticate()
-    state = ROOT/'runs/offline-campaign'
+    state = ROOT/options.state
     with (state/'dispatch.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        refresh(api, ROOT/'data/offline-input', state)
+        refresh(api, ROOT/options.data, state)

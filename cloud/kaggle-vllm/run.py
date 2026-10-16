@@ -162,12 +162,22 @@ try:
     if os.environ.get('THINKINGCAP_OFFLINE_VERIFY') == '1':
         command = [python, 'cloud/verify_offline.py']
     if os.environ.get('THINKINGCAP_OFFLINE_JOB'):
-        data_manifest = next(pathlib.Path('/kaggle/input').rglob('collection-plan.json'))
+        data_manifests = list(pathlib.Path('/kaggle/input').rglob('collection-plan.json'))
+        dataset_name = os.environ.get('THINKINGCAP_OFFLINE_DATASET', '').split('/')[-1]
+        if dataset_name:
+            data_manifests = [p for p in data_manifests if dataset_name in p.parts]
+        if len(data_manifests) != 1:
+            raise ValueError('Attach exactly the specified frozen collection input')
+        data_manifest = data_manifests[0]
         command = [python, 'cloud/collect_offline.py', '--data', str(data_manifest.parent),
             '--job', os.environ['THINKINGCAP_OFFLINE_JOB'],
             '--expected-plan-sha', os.environ['THINKINGCAP_PLAN_SHA'],
             '--generation-seconds', os.environ.get('THINKINGCAP_GENERATION_SECONDS', '2700')]
         resume_indexes = list(pathlib.Path('/kaggle/input').rglob('collection-index.json'))
+        # A CPU reconciliation output contains one bootstrap index per selected
+        # shard. Regular previous GPU attempts still have a single root index.
+        resume_indexes = [p for p in resume_indexes
+            if '/bootstrap/' not in str(p) or p.parent.name == os.environ['THINKINGCAP_OFFLINE_JOB']]
         if len(resume_indexes) > 1:
             raise ValueError('Attach at most one previous attempt for this shard')
         if resume_indexes:

@@ -43,7 +43,7 @@ def main():
             raise ValueError('Raw source output is not complete/attachable')
         # Keep only one campaign CPU grader active, independently of its two GPU jobs.
         for row in api.kernels_list(mine=True,page_size=100) or []:
-            if '/thinkingcap-offline-grade-' in row.ref or '/thinkingcap-offline-cpu-verification' in row.ref:
+            if any(s in row.ref for s in ('/thinkingcap-offline-grade-', '/thinkingcap-offline-cpu-verification', '/thinkingcap-offline-subset-reconcile')):
                 if api.kernels_status(row.ref).status.name in ('RUNNING','QUEUED','CANCEL_REQUESTED'):
                     raise RuntimeError('Wait for active CPU grader: '+row.ref)
         kernel = 'krcalkrcal/'+title.lower().replace(' ','-')

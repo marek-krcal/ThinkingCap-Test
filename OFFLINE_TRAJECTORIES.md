@@ -20,7 +20,7 @@ Test and validation bytes are unchanged. At eight samples, the revised intended
 target is **44,472** answers (16,000 train + 22,072 test + 6,400 validation),
 superseding the old 402,968 target below.
 
-**Collection transition is pending:** keep the active bounded a2 sessions and
+**Collection transition is pending GPU-source completion:** keep the active bounded a2 sessions and
 preserve all their outputs; do not launch more old full-training shards. Dispatch
 now blocks train jobs unless the data hash matches this selected subset. Before
 new selected-training launches, migrate the frozen plan/private input/ledger to
@@ -28,6 +28,43 @@ the subset, reconcile reusable selected-ID answers from completed old outputs,
 and skip their exact keys with seeds preserved. Do not overwrite the old campaign
 or raw outputs, and do not silently regenerate completed selected trajectories.
 Existing test collection can continue unchanged. No training is authorized.
+
+The selected training plan has five shards / 16,000 answers and SHA-256
+`860f6c66a5b75d1dc702f47720075830984520994ad88b1e72ffa7ebe385e8e2`.
+The separate private input `krcalkrcal/thinkingcap-offline-subset-input` was
+created with the selected train file, unchanged held-out files and provenance;
+verify READY before submission. Old test/validation keep their old input/ledger.
+`cloud/reconcile_offline_subset.py` is stdlib-only: it validates original raw
+hashes, model/sampling/caps/dtype, question messages/IDs/revision/seeds, rejects
+duplicates, and recomputes selected binary correctness before importing. Raw
+selected answers are copied only within Kaggle, never downloaded locally.
+
+After **all old training attempts COMPLETE and audited** by legacy refresh:
+
+```sh
+# CPU-only, no GPU. Full SHA must already be published. Never blindly retry push.
+.venv-kaggle/bin/python cloud/dispatch_subset_reconcile.py --commit FULL_SHA
+# Once this exact CPU notebook is COMPLETE, download small indexes/labels only:
+.venv-kaggle/bin/python cloud/dispatch_subset_reconcile.py --audit
+.venv-kaggle/bin/python cloud/refresh_offline.py --data data/offline-subset \
+  --state runs/offline-subset-campaign
+# With a free GPU slot and fresh quota/draft checks:
+.venv-kaggle/bin/python cloud/dispatch_offline.py --job train-000 \
+  --data data/offline-subset --state runs/offline-subset-campaign \
+  --dataset krcalkrcal/thinkingcap-offline-subset-input \
+  --prefix 'ThinkingCap offline subset' --commit FULL_SHA --submit
+```
+
+The audited CPU bootstrap becomes attempt 1 for each new shard (possibly zero
+reused answers); its raw records remain in the CPU notebook output. The first GPU
+attempt is therefore `thinkingcap-offline-subset-train-000-a2`, not an old-name
+replacement. Its attached bootstrap has one index per shard, selected by job ID.
+New GPU attempts generate only missing keys. New dispatch is blocked until the
+bootstrap audit succeeds and requires distinct state/input/notebook namespaces.
+The two ledgers share a dispatch lock and account-wide capacity checks, including
+locally pending/unlisted submissions. The existing CPU grading slot also excludes
+concurrent reconciliation. Do not submit reconciliation before old a2 completes:
+it must import all completed old selected answers, including a2's new output.
 
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
