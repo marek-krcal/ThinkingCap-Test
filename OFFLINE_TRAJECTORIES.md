@@ -113,6 +113,23 @@ attempt identity; no overlapping retry or silent reuse of the cancelled output.
 Independent `thinkingcap-offline-test-000-a3` is running; test-001's CPU grader
 has completed and its 3,200 labels need refresh/audit.
 
+At **00:37 Prague**, the one bounded replacement
+`thinkingcap-offline-subset-train-000-a3` v1 (runner
+`c9568846991a0ad5ed0a844d2475d122b1946b45`) passed startup and is **actually
+generating on both T4s**, with 96–97% utilization. Its logged command uses the
+selected input/plan and `reconciled/bootstrap/train-000/collection-index.json`;
+eight saved keys are skipped (3,192 missing answers / 1,596 per GPU). The prior
+zero-output stall's cause remains unknown; successful retry does not establish
+that the bounded-fetch change was the cause of recovery. Test-000 a3 is also
+generating, with its expected 806 missing requests per GPU.
+
+Test-001 CPU grades are now audited: all 3,200 answers, 2,643 correct, zero capped,
+632,212 tokens. Revised-scope saved/graded coverage is **4,836/44,472**, comprising
+4,788 test answers plus 48 reused selected training answers. Current running
+answers are not included until sealed/audited. The CPU grading slot is free.
+Quota before the successful retry: 23,692.33 / 108,000 seconds used, reserved 0;
+refresh remains 02:00 Prague. No new training runs or recipe changes occurred.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
