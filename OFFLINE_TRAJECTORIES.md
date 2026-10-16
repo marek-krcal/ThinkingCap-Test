@@ -1,5 +1,34 @@
 # Reusable offline trajectories for SimPO / SFT
 
+## Scope update: task-aligned training subset (October 16)
+
+The user replaced exhaustive training-source collection with subsampling toward
+the test task types. `cloud/select_offline_training.py` prepares **2,000** training
+prompts: GSM8K 1,400; Skywork 400; CommonsenseQA 100; ARC Easy 100. The size/mix is
+an initial implementation assumption, not a user-specified exact number.
+Selection uses declared arithmetic/story features and penalties for abstract
+maths, with stable hash tie-breaking. It does not read test content or outcomes.
+It is a heuristic, not measured similarity or a guarantee of improved scores.
+GSM8K is closest to SVAMP. Skywork still includes harder arithmetic/combinatorial
+stories; the small QA samples retain breadth. None covers code synthesis, tool
+calling or rich instruction constraints directly.
+
+Prepared files: `data/offline-subset/{train,validation,test}.jsonl` and
+`selection.json`. Original IDs, seeds, messages, revisions and held-out splits
+are retained. Train SHA: `e8d86ce8fb6c753864d88b752ac8fbe0f0f54f0b19cb417e06a69c81ed031543`.
+Test and validation bytes are unchanged. At eight samples, the revised intended
+target is **44,472** answers (16,000 train + 22,072 test + 6,400 validation),
+superseding the old 402,968 target below.
+
+**Collection transition is pending:** keep the active bounded a2 sessions and
+preserve all their outputs; do not launch more old full-training shards. Dispatch
+now blocks train jobs unless the data hash matches this selected subset. Before
+new selected-training launches, migrate the frozen plan/private input/ledger to
+the subset, reconcile reusable selected-ID answers from completed old outputs,
+and skip their exact keys with seeds preserved. Do not overwrite the old campaign
+or raw outputs, and do not silently regenerate completed selected trajectories.
+Existing test collection can continue unchanged. No training is authorized.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.

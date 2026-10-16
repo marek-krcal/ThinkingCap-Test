@@ -127,6 +127,11 @@ def main():
         help='Exact draft-only ref just verified OFF in its editor; not a persistent exemption')
     options = parser.parse_args()
     data = Path(options.data)
+    selection_file = ROOT/'data/offline-subset/selection.json'
+    if options.job.startswith('train-') and selection_file.exists():
+        selection = json.loads(selection_file.read_text())
+        if digest(data/'train.jsonl') != selection['train_sha256']:
+            raise RuntimeError('Training scope changed to the selected subset: migrate its plan/ledger and reuse saved answers before dispatch')
     plan_file = data/'collection-plan.json'
     plan_hash = digest(plan_file)
     plan = json.loads(plan_file.read_text())
