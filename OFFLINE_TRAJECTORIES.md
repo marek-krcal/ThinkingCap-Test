@@ -20,8 +20,9 @@ Test and validation bytes are unchanged. At eight samples, the revised intended
 target is **44,472** answers (16,000 train + 22,072 test + 6,400 validation),
 superseding the old 402,968 target below.
 
-**Collection transition is pending GPU-source completion:** keep the active bounded a2 sessions and
-preserve all their outputs; do not launch more old full-training shards. Dispatch
+**Selected campaign transition completed:** both old bounded a2 sessions finished
+COMPLETE normally. Their immutable outputs were preserved; no more old full-training
+shards may be launched. Dispatch
 now blocks train jobs unless the data hash matches this selected subset. Before
 new selected-training launches, migrate the frozen plan/private input/ledger to
 the subset, reconcile reusable selected-ID answers from completed old outputs,
@@ -33,7 +34,7 @@ The selected training plan has five shards / 16,000 answers and SHA-256
 `860f6c66a5b75d1dc702f47720075830984520994ad88b1e72ffa7ebe385e8e2`.
 The separate private input `krcalkrcal/thinkingcap-offline-subset-input` was
 created with the selected train file, unchanged held-out files and provenance;
-verify READY before submission. Old test/validation keep their old input/ledger.
+READY verified. Old test/validation keep their old input/ledger.
 `cloud/reconcile_offline_subset.py` is stdlib-only: it validates original raw
 hashes, model/sampling/caps/dtype, question messages/IDs/revision/seeds, rejects
 duplicates, and recomputes selected binary correctness before importing. Raw
@@ -65,6 +66,34 @@ The two ledgers share a dispatch lock and account-wide capacity checks, includin
 locally pending/unlisted submissions. The existing CPU grading slot also excludes
 concurrent reconciliation. Do not submit reconciliation before old a2 completes:
 it must import all completed old selected answers, including a2's new output.
+
+### Transition audit, October 17 shortly after midnight Prague
+
+- Old test-000 a2 saved 714 new answers / 1,647,672 tokens; cumulative 1,588.
+- Old train-000 a2 saved 795 new answers / 2,163,327 tokens, 174 correct and
+  411 capped; cumulative legacy-source answers 1,705. Most are now outside the
+  selected scope and must not be counted toward its completion.
+- CPU-only `thinkingcap-offline-subset-reconcile` v1 COMPLETE: **48** selected
+  existing answers imported, 18 correct, 10 capped, 94,864 tokens. Hashes,
+  identities, seeds and original grades passed; zero regenerated answers and
+  no model runtime/GPU. Audited in `runs/offline-subset-campaign/ledger.json`.
+- New GPU collectors: `thinkingcap-offline-test-001-a1` v1 and
+  `thinkingcap-offline-subset-train-000-a2` v1, pinned
+  `f33b1980370911d6154e7cacef336c21c20a5d91`. The selected shard's bootstrap
+  skips 8 existing answers; the other imported answers belong to later shards.
+- CPU grader `thinkingcap-offline-grade-test-000-a2` v1 grades the new 714 saved
+  test answers independently. Keep at most these two GPU collectors plus one
+  campaign CPU job; do not dispatch another while both GPU slots are occupied.
+- Quota before selected launch: **22,144.62 / 108,000 seconds** used, refresh
+  October 17 00:00 UTC / 02:00 Prague. No quota reset has yet occurred.
+
+Run `cloud/report_offline_scope.py` after both ledger refreshes for authoritative
+**revised-scope** counts: it includes original test/validation plus selected
+training, excludes legacy out-of-scope training, validates seeds and rejects
+duplicated graded keys. It saves `runs/offline-subset-campaign/scope-progress.json`.
+The legacy refresh still reports its old historical target; that is not the
+authorized current target. Revised target remains **44,472**, not 402,968.
+161 local regression tests pass. No actual training has been run.
 
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
