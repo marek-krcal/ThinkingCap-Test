@@ -47,5 +47,11 @@ cache = next(Path('/kaggle/input').rglob('eval-cache/questions/manifest.json'))
 shutil.copytree(cache.parent,root/'questions')
 old_nltk = cache.parent.parent/'nltk_data'
 if old_nltk.exists(): shutil.copytree(old_nltk,Path(os.environ['NLTK_DATA']))
+run('grader_import_check',[python,'-c',
+    "import sys; from evaluate import load_suite, grading_context, parse_arguments; "
+    "s=load_suite(__import__('pathlib').Path('questions')); "
+    "grading_context(s,parse_arguments(['--out','/unused'])); "
+    "sys.path.insert(0,s['evalplus']); from evalplus.evaluate import check_correctness; "
+    "assert 'torch' not in sys.modules and 'vllm' not in sys.modules; print('All grader imports passed')"],root)
 run('grade_saved',[python,'cloud/grade_collection.py'],root)
 print('CPU-only saved-answer grading completed',flush=True)

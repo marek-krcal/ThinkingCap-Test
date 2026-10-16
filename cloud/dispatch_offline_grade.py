@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commit', required=True)
+    parser.add_argument('--retry', action='store_true', help='Repair a failed CPU grader only')
     choice = parser.add_mutually_exclusive_group(required=True)
     choice.add_argument('--job')
     choice.add_argument('--verify', action='store_true')
@@ -30,8 +31,12 @@ def main():
         else:
             ledger = json.loads(ledger_file.read_text())
             attempt = [a for a in ledger['attempts'] if a['job_id']==args.job][-1]
-            if attempt['state'] != 'generated' or attempt.get('grade_kernel'):
+            if attempt['state'] not in ('generated','audit_required'):
                 raise ValueError('Raw output must be generated, not already graded or submitted')
+            if attempt.get('grade_kernel'):
+                prior = api.kernels_status(attempt['grade_kernel']).status.name
+                if not args.retry or prior not in ('ERROR','CANCEL_ACKNOWLEDGED'):
+                    raise ValueError('Retry only an explicitly stopped, failed CPU grader')
             title = f"ThinkingCap offline grade {args.job} a{attempt['attempt']}"
             source = attempt['kernel']
         if api.kernels_status(source).status.name != 'COMPLETE':
@@ -42,7 +47,7 @@ def main():
                 if api.kernels_status(row.ref).status.name in ('RUNNING','QUEUED','CANCEL_REQUESTED'):
                     raise RuntimeError('Wait for active CPU grader: '+row.ref)
         kernel = 'krcalkrcal/'+title.lower().replace(' ','-')
-        folder = state/'cpu-submissions'/kernel.split('/')[-1]
+        folder = state/'cpu-submissions'/(kernel.split('/')[-1]+'-'+args.commit[:8])
         folder.mkdir(parents=True,exist_ok=False)
         script = ('import os, urllib.request\n'
             f'os.environ.update(THINKINGCAP_REF={args.commit!r},THINKINGCAP_TIMEOUT_SECONDS="3600")\n'
