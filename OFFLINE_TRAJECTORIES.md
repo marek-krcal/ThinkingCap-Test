@@ -130,6 +130,17 @@ answers are not included until sealed/audited. The CPU grading slot is free.
 Quota before the successful retry: 23,692.33 / 108,000 seconds used, reserved 0;
 refresh remains 02:00 Prague. No new training runs or recipe changes occurred.
 
+At **01:16 Prague**, test-000 a3 is COMPLETE and its CPU grades are audited:
+529 new answers, 244 correct, 49 capped, 1,306,842 tokens. Test-000 cumulative
+coverage is 2,117/3,200 (1,070 correct, 178 capped); it remains partial, with
+1,083 keys missing. The revised scope now has **5,365 saved and graded** answers
+(5,317 test + 48 selected training), no pending CPU grades at this checkpoint.
+`thinkingcap-offline-test-002-a1` v1 was submitted in the freed GPU slot with
+runner `5252b906ee0e0513e3eb2a130ad8b429f935de28`; selected train-000 a3 continues
+independently. Quota before test-002 launch: 27,749.42/108,000 seconds used,
+reserved 0, refresh 02:00 Prague. Fresh draft OFF and account-wide capacity checks
+passed. No old full-training collection was resumed.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
