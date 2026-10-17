@@ -448,6 +448,27 @@ Actual startup/queues still need verification. Fresh quota: 26,121.97/108,000s
 used, reserved 0, refresh October 24 00:00 UTC; fresh draft OFF/capacity checks
 passed. CPU slot is free. Offline collection only; no training or tuning.
 
+At **06:22 Prague (04:22 UTC)**, selected train-000 a4 is COMPLETE/audited,
+normal deadline partial: 1,067 new answers, 358 correct, 338 capped, 2,597,763
+tokens; generation-only 2,557.98s, startup 136.03s, stage 2,694.00s. New
+per-source answers / correct / capped / tokens: GSM8K 790 / 307 / 191 /
+1,796,054; Skywork 223 / 9 / 147 / 778,490; CommonsenseQA 31 / 23 / 0 /
+11,683; ARC Easy 23 / 19 / 0 / 11,536. Train-000 is now 2,168 / 3,200,
+1,032 missing; latest audited a4 is the next resume parent. Partial metrics
+remain completion-biased. No saved keys were regenerated.
+
+Revised scope is **34,257 saved AND graded / 44,472**, zero awaiting grading,
+no duplicates/seed errors: 22,072 test + 5,324 validation + 6,861 selected train.
+Selected train-001 a3 has verified actual generation on both T4s 95-97%,
+correct selected plan/latest a2 parent, 1,085 requests/GPU (2,170 missing),
+skipping 1,030 exact saved keys. The freed slot now runs selected train-002 a3:
+`thinkingcap-offline-subset-train-002-a3` v1, submitted 04:22:10 UTC, pinned
+`16df21afcb66699fb7047d6b504ac57637000bc1`, latest audited selected train-002 a2
+attached; skip 1,161 saved keys, 2,039 missing. Verify actual startup/queues.
+Fresh quota: 26,374.85/108,000s used, reserved 0, refresh October 24 00:00 UTC;
+fresh draft OFF and capacity checks passed. CPU slot is free. Full coverage is
+still false; 1,076 validation keys also remain missing. No training or tuning.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
