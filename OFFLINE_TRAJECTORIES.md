@@ -616,6 +616,16 @@ selected plan, seeds, sampling, caps and grading remain frozen. Full local suite
 **167 tests passed** (the Kaggle-client-only environment lacks optional test
 dependencies; rerunning in the existing full local environment passed).
 
+The single minimal-input recovery is submitted as
+`thinkingcap-offline-subset-train-004-a4` v1 at **06:16:19 UTC**, pinned
+`2c806092bac7d48c08a103f78dd674e591958ae5`. Its sole notebook attachment is
+the latest audited train-004 a2 parent (the cancelled a3 saved nothing): skip
+**1,241 exact keys**, generate only **1,959 missing** with unchanged seeds.
+Fresh browser draft OFF and global capacity/quota checks passed: 35,560.70 /
+108,000s used, reserved 0, refresh October 24 00:00 UTC, only train-001 active.
+Verify actual startup/queues. If this reduced-input attempt also stalls, inspect
+the exact session and do not blindly repeat it. No training/tuning authorized.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
