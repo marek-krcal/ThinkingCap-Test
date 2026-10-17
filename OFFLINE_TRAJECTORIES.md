@@ -570,6 +570,29 @@ Both ledgers and the scope report were refreshed: **36,761 saved AND graded /
 44,472**, zero awaiting grades, no duplicate/seed errors, full coverage false.
 No training/tuning or saved-answer regeneration was performed.
 
+At **07:44 Prague (05:44 UTC)**, selected train-000 a5 was cancelled after
+repeated bounded CLI follow logs stayed empty past 15 minutes. The browser
+identified exact session **359241542**, Running for 948.9s, Output 0 B.
+Exact API cancellation reached **CANCEL_ACKNOWLEDGED**; zero new answers,
+2,168 audited parent keys intact. Cause remains unknown (provider allocation /
+startup / initial fetch); no blind identical retry is authorized. Latest safe
+parent remains train-000 a4. Previously cancelled train-002/004 and validation
+startup attempts also remain excluded, with their audited parents preserved.
+
+Independent train-001 a4 is actually generating on both T4s at 95–98% utilization,
+using the selected input/plan and latest audited a3 parent: 522 + 521 requests,
+1,043 missing keys, 2,157 saved keys skipped. Both engine health checks passed;
+generation began about 05:40 UTC. Normal T4 FlashInfer fallback is not a failure.
+The freed slot resumes train-003's **562 missing keys** via
+`thinkingcap-offline-subset-train-003-a4` v1, submitted **05:44:34 UTC**, pinned
+`76d6867606474d65225da18c8ae332e673875962`, latest audited a3 parent attached;
+skip 2,638 exact keys, unchanged seeds. Verify actual startup and queues.
+Fresh draft OFF/capacity checks passed; quota 32,033.15 / 108,000s used,
+reserved 0, refresh October 24 00:00 UTC, only train-001 active before launch.
+Both ledgers and revised-scope report were refreshed: **36,761 saved AND graded
+/ 44,472**, zero awaiting grades/errors/duplicates, full coverage false. Running
+answers are not counted until sealed/audited. CPU slot free; no training/tuning.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
