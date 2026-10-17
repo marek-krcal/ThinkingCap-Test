@@ -358,6 +358,37 @@ Fresh quota before launch: 17,318.99/108,000s used, reserved 0; refresh October
 After the test-tail GPU finishes, prioritize validation-001 or selected resumes;
 after test-tail CPU audit, verify the full 22,072-key test coverage separately.
 
+At **05:10 Prague (03:10 UTC, October 17)**, test-000 a5 and its CPU-only
+grader are COMPLETE/audited: 92 new answers, 70 correct, 1 capped, 117,972
+tokens. Generation-only 260.55s, startup 135.28s, stage 395.83s; CPU grading
+5.63s, no GPU/model runtime and no regeneration. Exact audit verified all
+**22,072 unique test keys = 2,759 prompts x 8**, matching saved indexes and
+original seeds, without duplicates or correct capped answers. Test collection
+and grading are complete, not the full campaign.
+
+Final test answers / correct / capped / tokens:
+
+| Source | Answers | Correct | Capped | Tokens |
+| --- | ---: | ---: | ---: | ---: |
+| MBPP | 3,024 | 1,582 | 234 | 6,445,190 |
+| BFCL simple Python | 3,200 | 2,649 | 0 | 626,634 |
+| BFCL multiple | 1,600 | 1,218 | 0 | 345,072 |
+| BFCL irrelevance | 1,920 | 1,596 | 0 | 423,255 |
+| SVAMP | 8,000 | 7,080 | 115 | 5,405,769 |
+| IFEval | 4,328 | 2,472 | 153 | 3,009,283 |
+| Total | 22,072 | 16,597 | 502 | 16,255,203 |
+
+Revised scope: **27,866 saved AND graded / 44,472**, zero awaiting grading,
+5,794 selected-training answers; full campaign coverage remains false.
+Validation-000 continues actual generation on both T4s. The freed GPU slot now
+runs `thinkingcap-offline-validation-001-a1` v1, submitted 03:07:34 UTC, pinned
+`6a3cd8812f7c0499c4287c614121b1bb2b08f0d1`, 400 separate held-out prompts /
+3,200 answers. Startup dependency logs verified; actual queues/both GPUs must
+still be checked. Fresh quota before launch: 18,645.51/108,000s used, reserved
+0, next refresh October 24 00:00 UTC. Fresh draft OFF/capacity checks passed.
+CPU slot is free. Next freed GPU can resume the audited selected-training
+partials, never old full-training shards. No optimization/training was run.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
