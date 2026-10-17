@@ -408,6 +408,24 @@ Fresh quota: 19,857.23/108,000s used, reserved 0, refresh October 24 00:00 UTC;
 fresh draft OFF and global capacity checks passed. CPU slot is free. This is
 offline answer generation only, not training or tuning.
 
+At **05:25 Prague (03:25 UTC)**, validation-001 a1 is COMPLETE/audited: all
+3,200 answers, 2,261 correct, 2 capped, 1,615,467 tokens. Generation-only
+642.69s, startup 131.47s, stage 774.16s. CommonsenseQA: 1,600 answers / 912
+correct / 0 capped / 791,912 tokens; ARC Easy: 1,600 / 1,349 / 2 / 823,555.
+Revised scope is **32,421 saved AND graded / 44,472**, no pending grading.
+Validation totals 4,555 / 6,400; selected training 5,794 / 16,000; test remains
+fully verified at 22,072. Full campaign coverage remains false.
+
+`thinkingcap-offline-validation-000-a2` v1 was submitted 03:24:35 UTC, pinned
+`08c7b67f0bc6586ba78144e7063c97402eab5bfd`, attaching audited validation-000 a1.
+It must skip 1,355 exact saved keys and generate only 1,845 missing answers.
+Fresh quota before launch: 20,398.76/108,000s used, reserved 0; refresh October
+24 00:00 UTC. Fresh draft OFF and capacity checks passed. Selected train-000 a4
+still reports RUNNING with empty bounded CLI follow logs at 03:24, five minutes
+after submission; startup/queues are not verified. Continue watching it, and if
+still zero-output after 15 minutes inspect the exact session before any recovery;
+do not blindly repeat a launch. CPU slot is free; no training was run.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
