@@ -469,6 +469,25 @@ Fresh quota: 26,374.85/108,000s used, reserved 0, refresh October 24 00:00 UTC;
 fresh draft OFF and capacity checks passed. CPU slot is free. Full coverage is
 still false; 1,076 validation keys also remain missing. No training or tuning.
 
+At **06:39 Prague (04:39 UTC)**, selected train-002 a3 remained RUNNING with
+empty bounded CLI follow logs. Its refreshed Kaggle page showed exact session
+**359224930**, running 940s and output **0 B**, without launcher output. Two
+bounded exact-stream API probes returned HTTP 400, not evidence of execution.
+Cancelled only that exact session; **CANCEL_ACKNOWLEDGED verified**. Local
+ledger records `cancelled_startup`, verified zero output and zero new answers;
+the 1,161 audited parent answers remain preserved. Cause remains unknown
+(provider allocation/startup or initial fetch); do not blindly repeat an
+identical retry. Train-001 a3 is independently healthy and was not touched.
+
+To continue independent authorized work, selected train-003 a3 v1 was submitted
+04:39:14 UTC, pinned `89d5f84d018152752682833b24ff4567a6477e50`, attaching
+audited train-003 a2. It must skip 1,261 exact keys and generate only the 1,939
+missing answers; verify actual startup/queues. Fresh quota/capacity checks after
+cancellation: 27,400.89/108,000s used, reserved 0, only train-001 active; refresh
+October 24 00:00 UTC. Fresh unrelated draft OFF verified. Scope stays **34,257
+saved AND graded / 44,472**, zero awaiting grading; no full-coverage claim.
+No training or tuning was performed.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
