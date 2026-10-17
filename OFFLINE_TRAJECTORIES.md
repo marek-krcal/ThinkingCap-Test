@@ -488,6 +488,27 @@ October 24 00:00 UTC. Fresh unrelated draft OFF verified. Scope stays **34,257
 saved AND graded / 44,472**, zero awaiting grading; no full-coverage claim.
 No training or tuning was performed.
 
+At **07:03 Prague (05:03 UTC)**, selected train-001 a3 is COMPLETE/audited,
+normal deadline partial: 1,127 new answers, 388 correct, 319 capped, 2,541,428
+tokens. Generation-only 2,548.36s, startup 142.41s, stage 2,690.77s. New
+per-source answers / correct / capped / tokens: GSM8K 718 / 254 / 182 /
+1,657,422; Skywork 249 / 27 / 137 / 801,016; CommonsenseQA 87 / 43 / 0 /
+49,697; ARC Easy 73 / 64 / 0 / 33,293. Train-001 now has 2,157 / 3,200,
+1,043 missing; latest audited a3 is its next resume parent. Partial metrics
+remain completion-biased.
+
+Revised scope is **35,384 saved AND graded / 44,472**, zero pending grading,
+no duplicate/seed errors: 22,072 test + 5,324 validation + 7,988 selected train.
+Train-003 a3 actual generation verified on both T4s, correct selected plan and
+latest a2 parent, 970 + 969 requests = 1,939 missing, 1,261 saved keys skipped.
+The free slot now runs `thinkingcap-offline-subset-train-004-a3` v1, submitted
+05:02:44 UTC, pinned `b1735ccc8dd0718d4e045ae7539297bf4bb8565f`, attaching
+audited train-004 a2; skip 1,241 exact keys, 1,959 missing. Verify actual startup
+and queues. Fresh quota 30,067.28/108,000s used, reserved 0, refresh October 24
+00:00 UTC; fresh draft OFF and global capacity checks passed. CPU slot free.
+Cancelled train-002 a3 remains stopped, its audited parent preserved; no blind
+identical retry. Full campaign is not complete. No training or tuning.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
