@@ -314,6 +314,24 @@ Fresh quota before launch: 11,456.45/108,000s used, reserved 0; refresh October
 All five selected shards still have missing answers; validation is unstarted.
 The complete corpus remains pending and no training has been run.
 
+At **04:30 Prague**, test-000 a4 is COMPLETE, sealing a normal deadline
+partial of **991 new answers / 1,730,022 tokens**. Cumulative test-000 coverage
+is 3,108/3,200: **92 test trajectories remain**, not a completed test corpus.
+Generation-only 2,561.26s, startup 131.49s, stage 2,692.75s. Its separate
+CPU grader `thinkingcap-offline-grade-test-000-a4` v1 is submitted; raw answers
+are saved and immutable while grades await audit. Revised coverage is
+**26,533 saved / 25,542 graded / 44,472**, 991 awaiting CPU grading.
+
+The freed GPU slot now collects held-out validation:
+`thinkingcap-offline-validation-000-a1` v1, submitted 02:29:27 UTC, runner
+`98628265c0510fe4b2c3276811be94c047d83ca7`. This keeps validation separate from
+the selected training subset. Verify actual startup/3,200 requests next.
+Selected train-004 a2 remains healthy and generating on both T4s with its
+expected 1,600-request queues. Fresh draft OFF and capacity checks passed;
+quota 14,651.92/108,000s used, reserved 0, refresh October 24 00:00 UTC.
+After CPU audit, test-000 a5 may attach a4 and skip 3,108 exact keys, but do not
+launch it concurrently with either current GPU job. Full coverage is pending.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
