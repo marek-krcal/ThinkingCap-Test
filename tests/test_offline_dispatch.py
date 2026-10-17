@@ -14,6 +14,20 @@ from utils.offline import digest
 
 
 class DispatchTests(unittest.TestCase):
+    def test_notebook_delivery_preserves_identical_pinned_launcher(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)/'notebook'
+            build_bundle(folder, 'train-004', 5, 'a'*40, 'b'*64, 'owner/parent',
+                         2700, 3600, minimal_resume_inputs=True, notebook_launcher=True)
+            metadata = json.loads((folder/'kernel-metadata.json').read_text())
+            self.assertEqual(metadata['kernel_type'], 'notebook')
+            self.assertEqual(metadata['code_file'], 'run.ipynb')
+            notebook = json.loads((folder/'run.ipynb').read_text())
+            self.assertEqual(len(notebook['cells']), 1)
+            self.assertEqual(''.join(notebook['cells'][0]['source']), (folder/'run.py').read_text())
+            self.assertEqual(notebook['cells'][0]['outputs'], [])
+            self.assertEqual(metadata['kernel_sources'], ['owner/parent'])
+
     def test_probe_cpu_slot_does_not_repeat_gpu_status_checks(self):
         self.assertTrue(is_campaign_cpu('krcalkrcal/thinkingcap-offline-grade-test-005-a2'))
         self.assertTrue(is_campaign_cpu('krcalkrcal/thinkingcap-offline-startup-diagnostic'))

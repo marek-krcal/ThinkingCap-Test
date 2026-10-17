@@ -30,7 +30,7 @@ def retry_read(operation):
 
 def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generation_seconds, timeout,
                  dataset='krcalkrcal/thinkingcap-offline-input', prefix='ThinkingCap offline',
-                 minimal_resume_inputs=False):
+                 minimal_resume_inputs=False, notebook_launcher=False):
     if minimal_resume_inputs and not previous:
         raise ValueError('Minimal resume inputs require an audited parent')
     if not re.fullmatch(r'[0-9a-f]{40}', commit):
@@ -60,8 +60,16 @@ def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generatio
         'print("Pinned launcher fetched; starting setup", flush=True)\n'
         'exec(compile(source,url,"exec"), {"__name__":"__main__", "__file__":url})\n')
     (folder/'run.py').write_text(source)
-    metadata = dict(id=kernel, title=title, code_file='run.py', language='python',
-        kernel_type='script', is_private='true', enable_gpu='true', enable_internet='true',
+    if notebook_launcher:
+        notebook = dict(nbformat=4, nbformat_minor=5,
+            metadata={'kernelspec': {'display_name': 'Python 3', 'language': 'python', 'name': 'python3'}},
+            cells=[dict(cell_type='code', execution_count=None, metadata={}, outputs=[],
+                        source=source.splitlines(keepends=True))])
+        (folder/'run.ipynb').write_text(json.dumps(notebook, indent=2)+'\n')
+    metadata = dict(id=kernel, title=title,
+        code_file='run.ipynb' if notebook_launcher else 'run.py', language='python',
+        kernel_type='notebook' if notebook_launcher else 'script',
+        is_private='true', enable_gpu='true', enable_internet='true',
         dataset_sources=[dataset], competition_sources=[],
         kernel_sources=([previous] if minimal_resume_inputs else
             ['krcalkrcal/thinkingcap-vllm-timing']+([previous] if previous else [])),
@@ -179,6 +187,8 @@ def main():
     parser.add_argument('--prefix', default='ThinkingCap offline')
     parser.add_argument('--minimal-resume-inputs', action='store_true',
         help='Omit redundant timing notebook only after verifying the audited parent contains cache/index')
+    parser.add_argument('--notebook-launcher', action='store_true',
+        help='Deliver the identical pinned launcher in one notebook cell instead of script mode')
     parser.add_argument('--verified-inactive-draft', action='append', default=[],
         help='Exact draft-only ref just verified OFF in its editor; not a persistent exemption')
     options = parser.parse_args()
@@ -245,12 +255,13 @@ def main():
             verify_resume_cache(api, parent)
         kernel = build_bundle(folder, options.job, attempt, options.commit, plan_hash,
             parent, options.generation_seconds, options.timeout, options.dataset, options.prefix,
-            options.minimal_resume_inputs)
+            options.minimal_resume_inputs, options.notebook_launcher)
         row = dict(job_id=options.job, attempt=attempt, kernel=kernel, commit=options.commit,
             timeout=options.timeout, submitted_at=time.time(), state='submission_pending', quota_before=quota,
             completed_answers=previous[-1]['completed_answers'] if previous else 0,
             new_answers=0, parent_kernel=parent,
-            minimal_resume_inputs=options.minimal_resume_inputs)
+            minimal_resume_inputs=options.minimal_resume_inputs,
+            notebook_launcher=options.notebook_launcher)
         ledger['attempts'].append(row)
         # Record intent first. An ambiguous network failure must not cause a
         # second submission; the monitor resolves the known kernel identity.

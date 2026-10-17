@@ -688,6 +688,24 @@ disabled, timeout 600s. No GPU retry may start until its small input/fetch repor
 is inspected; this diagnostic is not evidence that the unknown stall is fixed.
 No generation/grading/training. Coverage remains 38,366 / 44,472 saved/graded.
 
+At **08:48 Prague (06:48 UTC)**, the CPU startup diagnostic is COMPLETE and its
+small report audited: passed in **0.47249s**, correct selected plan/train hashes,
+readable parent cache/index with 1,241 saved keys, successful pinned setup fetch
+and compile. The fetched source was not executed; zero generated/graded answers,
+no model imports/GPU/training. This rules out an always-failing mount or fetch
+for those exact assets in the CPU session, not intermittent or GPU-specific
+provider startup problems. The unknown GPU stall cause is not proven fixed.
+
+A new opt-in `--notebook-launcher` delivers the **identical pinned launcher text**
+as one notebook cell instead of Kaggle script mode, retaining the audited parent
+and optional minimal inputs. This tests a different provider execution path;
+model revision, generation code/settings, data, seeds and grading are unchanged.
+Default dispatch remains script mode. Regression tests verify exact cell/source
+identity and metadata; **170 full local tests pass**. Use only one bounded
+notebook-mode train-004 recovery, observe real startup/queues before further
+recoveries, and do not blindly repeat if it also stalls. CPU diagnostic must not
+be rerun; its durable completed/audited record is preserved.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
