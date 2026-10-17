@@ -8,11 +8,27 @@ from unittest.mock import MagicMock
 
 from cloud.dispatch_offline import build_bundle, check_capacity, resume_parent, verify_resume_cache
 from cloud.dispatch_offline_grade import build_launcher
+from cloud.dispatch_startup_probe import build_probe
 from cloud.refresh_offline import refresh
 from utils.offline import digest
 
 
 class DispatchTests(unittest.TestCase):
+    def test_startup_probe_is_cpu_only_and_does_not_execute_fetched_launcher(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)/'probe'
+            build_probe(folder)
+            metadata = json.loads((folder/'kernel-metadata.json').read_text())
+            self.assertEqual(metadata['enable_gpu'], 'false')
+            self.assertEqual(len(metadata['kernel_sources']), 1)
+            source = (folder/'run.py').read_text()
+            self.assertIn('timeout=60', source)
+            self.assertNotIn('exec(', source)
+            self.assertNotIn('import torch', source)
+            self.assertNotIn('import vllm', source)
+            self.assertNotIn('subprocess', source)
+            self.assertIn("'generated_answers': 0", source)
+
     def test_minimal_resume_preserves_parent_and_frozen_recipe(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)/'minimal'

@@ -647,6 +647,26 @@ session/browser before any cancellation and verify acknowledgement. Actual
 startup/generation remains unverified. Cause is unknown, not proven fixed.
 No training/tuning or saved-answer regeneration.
 
+At **08:34 Prague (06:34 UTC)**, train-004 a4's single reduced-input recovery
+also remained RUNNING without startup logs past 15 minutes. Fresh CLI bounded
+follow was empty; browser identified exact session **359254453**, 993.1s,
+Output 0 B. Exact API cancellation reached **CANCEL_ACKNOWLEDGED** at 06:33 UTC.
+Zero new answers; the 1,241 audited a2 parent keys remain intact. Removing the
+redundant timing input was not sufficient; startup cause is still unknown.
+No GPU collector remains active. Do not repeat this recovery blindly or spread
+the unproven workaround to the other stalled shards.
+
+A separate **CPU-only startup diagnostic** is prepared to check selected input
+hashes, read the parent cache manifest/index, and fetch/compile (but never execute)
+the pinned setup source. It prints immediately, has no package installation or
+model imports, generates/grades zero answers and performs no training. A separate
+durable intent prevents accidental repeat pushes; it requires all collectors and
+campaign CPU jobs idle, fresh capacity/quota checks, the COMPLETE audited parent,
+and a ten-minute outer limit. Only small diagnostic JSON/logs may be downloaded.
+This is not a repeat of the passed 400-answer verification or reconciliation.
+Full local suite: **168 tests passed**. Saved/graded scope remains **38,366 /
+44,472**; all completed outputs and frozen generation settings remain unchanged.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
