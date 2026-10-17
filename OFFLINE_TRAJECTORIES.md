@@ -548,6 +548,28 @@ reserved 0, refresh October 24 00:00 UTC; fresh draft OFF/global capacity checks
 passed. Cancelled train-002/004 sessions remain excluded; no identical retries.
 CPU slot is free. No training/tuning or saved-answer regeneration.
 
+At **07:35 Prague (05:35 UTC)**, validation-000 a3 was stopped after more than
+15 minutes RUNNING with repeated bounded CLI follow logs empty. Its refreshed
+browser page showed 911.8s and Output 0 B; exact session **359239414** was
+cancelled through the API and **CANCEL_ACKNOWLEDGED verified** at 05:34 UTC.
+No new answers were saved; the 2,124 audited parent keys remain intact. The
+allocation/startup/initial-fetch cause is unknown. This is not evidence of an
+execution failure inside the collector; do not blindly repeat an identical
+launch. Cancelled selected train-002/004 attempts remain excluded too.
+
+Independent collection continues with `thinkingcap-offline-subset-train-001-a4`
+v1, submitted **05:35:07 UTC**, pinned
+`b4a90a8d916a3e6c8abb330ccd7554ae1c0bf1fa`, latest audited train-001 a3 parent
+attached. It must skip **2,157 exact keys** and generate only **1,043 missing**
+answers with unchanged seeds. Actual startup/queues remain to be verified.
+Fresh draft OFF and global capacity checks passed; fresh quota was
+31,934.40 / 108,000s used, reserved 0, refresh October 24 00:00 UTC, with only
+train-000 a5 active before launch. Train-000 a5 also awaits startup verification
+(submitted 05:27:22 UTC; 2,168 parent keys / 1,032 missing). CPU slot is free.
+Both ledgers and the scope report were refreshed: **36,761 saved AND graded /
+44,472**, zero awaiting grades, no duplicate/seed errors, full coverage false.
+No training/tuning or saved-answer regeneration was performed.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
