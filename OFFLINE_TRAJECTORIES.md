@@ -332,6 +332,13 @@ quota 14,651.92/108,000s used, reserved 0, refresh October 24 00:00 UTC.
 After CPU audit, test-000 a5 may attach a4 and skip 3,108 exact keys, but do not
 launch it concurrently with either current GPU job. Full coverage is pending.
 
+At **04:34 Prague**, test-000 a4 CPU grading is COMPLETE/audited: all 991 new
+answers, 588 correct, 55 capped, 1,730,022 tokens. Revised coverage is **26,533
+saved AND graded / 44,472**, no pending CPU labels. Test totals 21,980 answers;
+selected training totals 4,553. The 92 missing test keys may now safely resume
+from audited test-000 a4 when capacity frees. Both current GPU slots remain
+reserved for validation-000 a1 and selected train-004 a2. Full coverage is false.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
