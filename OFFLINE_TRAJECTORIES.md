@@ -287,6 +287,15 @@ checks passed; quota before launch 8,923.51/108,000s used, reserved 0, refresh
 October 24 00:00 UTC. Test-000, selected-train tails and both validation shards
 remain unfinished. No training, recipe changes or duplicate collection.
 
+At **03:41 Prague**, test-006 CPU grading is COMPLETE/audited: 2,872 labels,
+1,692 correct, 107 capped, 2,001,306 tokens. Revised coverage is now **24,281
+saved AND graded / 44,472**, zero awaiting CPU grading. Test accounts for
+20,989 answers and selected training for 3,292; the remaining test deficit is
+the 1,083 keys assigned to test-000 a4. Its startup command attaches test-000
+a3 and routes exactly 542/541 remaining requests across the two GPUs, confirming
+the 2,117-key skip. Actual engine generation still needs a fresh check.
+Selected train-003 remains healthy on both T4s; CPU slot is free.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
