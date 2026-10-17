@@ -6,13 +6,44 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock
 
-from cloud.dispatch_offline import build_bundle, check_capacity, resume_parent
+from cloud.dispatch_offline import build_bundle, check_capacity, resume_parent, verify_resume_cache
 from cloud.dispatch_offline_grade import build_launcher
 from cloud.refresh_offline import refresh
 from utils.offline import digest
 
 
 class DispatchTests(unittest.TestCase):
+    def test_minimal_resume_preserves_parent_and_frozen_recipe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)/'minimal'
+            build_bundle(folder, 'train-004', 4, 'a'*40, 'b'*64, 'owner/parent',
+                         2700, 3600, minimal_resume_inputs=True)
+            metadata = json.loads((folder/'kernel-metadata.json').read_text())
+            self.assertEqual(metadata['kernel_sources'], ['owner/parent'])
+            source = (folder/'run.py').read_text()
+            self.assertIn('2700', source)
+            self.assertIn('b'*64, source)
+            with self.assertRaisesRegex(ValueError, 'audited parent'):
+                build_bundle(Path(tmp)/'invalid', 'train-004', 4, 'a'*40, 'b'*64,
+                             None, 2700, 3600, minimal_resume_inputs=True)
+
+    def test_minimal_resume_checks_all_metadata_pages_without_downloading(self):
+        api = MagicMock()
+        call = api.build_kaggle_client.return_value.__enter__.return_value.kernels.kernels_api_client.list_kernel_session_output
+        call.side_effect = [
+            SimpleNamespace(files=[SimpleNamespace(file_name='eval-cache/questions/manifest.json')], next_page_token='page2'),
+            SimpleNamespace(files=[SimpleNamespace(file_name='collection/collection-index.json')], next_page_token=None)]
+        verify_resume_cache(api, 'owner/parent')
+        self.assertEqual(call.call_count, 2)
+        api.kernels_output.assert_not_called()
+
+    def test_minimal_resume_rejects_missing_cache(self):
+        api = MagicMock()
+        call = api.build_kaggle_client.return_value.__enter__.return_value.kernels.kernels_api_client.list_kernel_session_output
+        call.return_value = SimpleNamespace(files=[], next_page_token=None)
+        with self.assertRaisesRegex(RuntimeError, 'cache manifest'):
+            verify_resume_cache(api, 'owner/parent')
+
     def test_cpu_launcher_logs_before_bounded_initial_fetch(self):
         source = build_launcher('a'*40)
         compile(source, '<cpu-launcher>', 'exec')

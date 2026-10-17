@@ -593,6 +593,29 @@ Both ledgers and revised-scope report were refreshed: **36,761 saved AND graded
 / 44,472**, zero awaiting grades/errors/duplicates, full coverage false. Running
 answers are not counted until sealed/audited. CPU slot free; no training/tuning.
 
+At **08:15 Prague (06:15 UTC)**, train-003 a4 is COMPLETE/audited **full
+3,200-answer coverage**. Its final 562 answers added 179 correct, 211 capped,
+1,459,345 tokens; generation-only 1,379.41s, engine startup 130.99s, collector
+stage 1,510.40s (launcher evaluation stage 1,520.26s). New per-source answers /
+correct / capped / tokens: GSM8K 385 / 152 / 120 / 975,903; Skywork 129 / 5 / 90 /
+448,618; CommonsenseQA 32 / 8 / 0 / 17,019; ARC Easy 16 / 14 / 1 / 17,805.
+Never regenerate this completed shard. Both ledgers refreshed and revised scope
+audited: **37,323 saved AND graded / 44,472** = 22,072 test + 5,324 validation +
+9,927 selected train; zero awaiting grades/errors/duplicates, full campaign false.
+
+Startup investigation found every resumed collector attaches the old timing
+notebook in addition to its audited parent. Metadata-only inspection confirmed
+train-004 a2 already has `eval-cache/questions/manifest.json` and its exact
+`collection/collection-index.json`; the timing notebook supplies a redundant
+cache. New opt-in `--minimal-resume-inputs` omits only that timing attachment,
+requires an audited COMPLETE parent, and verifies cache/index filenames across
+all output pages before submission. No raw/environment files are downloaded.
+The original startup cause remains unknown; this is a bounded recovery hypothesis,
+not a proven fix. Existing runs and default dispatch remain unchanged. Model,
+selected plan, seeds, sampling, caps and grading remain frozen. Full local suite:
+**167 tests passed** (the Kaggle-client-only environment lacks optional test
+dependencies; rerunning in the existing full local environment passed).
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.

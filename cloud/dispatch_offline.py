@@ -29,7 +29,10 @@ def retry_read(operation):
 
 
 def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generation_seconds, timeout,
-                 dataset='krcalkrcal/thinkingcap-offline-input', prefix='ThinkingCap offline'):
+                 dataset='krcalkrcal/thinkingcap-offline-input', prefix='ThinkingCap offline',
+                 minimal_resume_inputs=False):
+    if minimal_resume_inputs and not previous:
+        raise ValueError('Minimal resume inputs require an audited parent')
     if not re.fullmatch(r'[0-9a-f]{40}', commit):
         raise ValueError('Pin a full commit ID')
     if not re.fullmatch(r'(test|train|validation)-\d{3}', job_id) or attempt < 1:
@@ -60,10 +63,35 @@ def build_bundle(folder, job_id, attempt, commit, plan_hash, previous, generatio
     metadata = dict(id=kernel, title=title, code_file='run.py', language='python',
         kernel_type='script', is_private='true', enable_gpu='true', enable_internet='true',
         dataset_sources=[dataset], competition_sources=[],
-        kernel_sources=['krcalkrcal/thinkingcap-vllm-timing']+([previous] if previous else []),
+        kernel_sources=([previous] if minimal_resume_inputs else
+            ['krcalkrcal/thinkingcap-vllm-timing']+([previous] if previous else [])),
         model_sources=[])
     (folder/'kernel-metadata.json').write_text(json.dumps(metadata, indent=2)+'\n')
     return kernel
+
+
+def verify_resume_cache(api, parent):
+    """Inspect filenames only; never download raw outputs or environments."""
+    from kagglesdk.kernels.types.kernels_api_service import ApiListKernelSessionOutputRequest
+    owner, slug = parent.split('/')
+    required = {'eval-cache/questions/manifest.json', 'collection/collection-index.json'}
+    found, token, seen = set(), None, set()
+    while True:
+        request = ApiListKernelSessionOutputRequest()
+        request.user_name, request.kernel_slug, request.page_size = owner, slug, 200
+        if token:
+            request.page_token = token
+        with api.build_kaggle_client() as client:
+            response = client.kernels.kernels_api_client.list_kernel_session_output(request)
+        found.update(item.file_name for item in response.files or [])
+        token = response.next_page_token
+        if not token:
+            break
+        if token in seen:
+            raise RuntimeError('Repeated parent output page token')
+        seen.add(token)
+    if not required.issubset(found):
+        raise RuntimeError('Minimal resume parent must contain its cache manifest and collection index')
 
 
 def resume_parent(previous):
@@ -149,6 +177,8 @@ def main():
     parser.add_argument('--state', default='runs/offline-campaign')
     parser.add_argument('--dataset', default='krcalkrcal/thinkingcap-offline-input')
     parser.add_argument('--prefix', default='ThinkingCap offline')
+    parser.add_argument('--minimal-resume-inputs', action='store_true',
+        help='Omit redundant timing notebook only after verifying the audited parent contains cache/index')
     parser.add_argument('--verified-inactive-draft', action='append', default=[],
         help='Exact draft-only ref just verified OFF in its editor; not a persistent exemption')
     options = parser.parse_args()
@@ -209,12 +239,18 @@ def main():
         quota = check_capacity(api, dict(attempts=capacity_attempts), options.timeout, options.verified_inactive_draft)
         if parent and api.kernels_status(parent).status.name != 'COMPLETE':
             raise RuntimeError('Previous output must be COMPLETE and attachable, not running or failed')
+        if options.minimal_resume_inputs:
+            if not parent:
+                raise RuntimeError('Minimal resume inputs require an audited parent')
+            verify_resume_cache(api, parent)
         kernel = build_bundle(folder, options.job, attempt, options.commit, plan_hash,
-            parent, options.generation_seconds, options.timeout, options.dataset, options.prefix)
+            parent, options.generation_seconds, options.timeout, options.dataset, options.prefix,
+            options.minimal_resume_inputs)
         row = dict(job_id=options.job, attempt=attempt, kernel=kernel, commit=options.commit,
             timeout=options.timeout, submitted_at=time.time(), state='submission_pending', quota_before=quota,
             completed_answers=previous[-1]['completed_answers'] if previous else 0,
-            new_answers=0, parent_kernel=parent)
+            new_answers=0, parent_kernel=parent,
+            minimal_resume_inputs=options.minimal_resume_inputs)
         ledger['attempts'].append(row)
         # Record intent first. An ambiguous network failure must not cause a
         # second submission; the monitor resolves the known kernel identity.
