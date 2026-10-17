@@ -174,6 +174,22 @@ Before the second launch quota was 29,085.42/108,000 seconds used, reserved 0;
 refresh still 02:00 Prague. Fresh draft OFF checks preceded both submissions.
 The full revised corpus remains incomplete; no training is being run.
 
+At **02:04 Prague**, test-003 a1 and its CPU grader are COMPLETE and audited:
+3,200 unique answers, 2,786 correct, 49 capped, 2,137,744 tokens. Controller
+generation-only time 1,249.47s, engine startup 137.83s, total generation stage
+1,387.30s. Revised-scope coverage is now **12,858 saved AND graded / 44,472**,
+with zero awaiting grading (11,717 test + 1,141 selected training answers).
+No duplicate or invalid truncated-correct labels were found.
+
+The free GPU slot was filled by `thinkingcap-offline-test-004-a1` v1, pinned
+`26c38141396bd2ebcd16f4487bc8a979e9fc82c3`, submitted October 17 00:01:26 UTC.
+It is the next disjoint 400-prompt SVAMP shard; actual startup needs verification.
+Selected train-001 a2 continues independently, with both T4s busy in fresh logs.
+CPU slot is free. Kaggle's fresh pre-launch quota confirmed the legitimate
+weekly reset: used 0, reserved 0, allowed 108,000 seconds, next refresh
+October 24 00:00 UTC. This is a provider-reported reset, not a quota workaround.
+Fresh unrelated-draft OFF verification preceded dispatch. No training authorized.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
