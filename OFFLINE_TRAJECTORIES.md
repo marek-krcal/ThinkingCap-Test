@@ -426,6 +426,28 @@ after submission; startup/queues are not verified. Continue watching it, and if
 still zero-output after 15 minutes inspect the exact session before any recovery;
 do not blindly repeat a launch. CPU slot is free; no training was run.
 
+At **06:13 Prague (04:13 UTC)**, validation-000 a2 is COMPLETE/audited with
+769 new GSM8K answers: 100 correct, 433 capped, 2,470,673 tokens.
+Generation-only 2,558.17s, startup 135.57s, stage 2,693.74s. This was a normal
+deadline partial, not failure. Validation-000 now has 2,124 / 3,200 answers,
+1,076 missing; latest audited a2 must be attached for any future resume.
+Validation overall is 5,324 / 6,400, 2,946 correct, 759 capped, 7,120,331
+tokens. Partial-resume correctness is completion-biased; frozen recipe unchanged.
+Revised scope: **33,190 saved AND graded / 44,472**, zero pending grading,
+no duplicate/seed errors, full campaign coverage false.
+
+Selected train-000 a4's delayed startup advanced without retry: launcher and
+dependency logs appeared around 03:32, engine warmup 03:35, actual generation
+03:38 on both T4s. Correct selected plan/latest a3 resume verified, 1,050 +
+1,049 requests (2,099 missing), original 1,101 keys skipped. Cause of initial
+delay remains unknown. It is healthy, not a zero-output startup failure.
+The freed slot now runs `thinkingcap-offline-subset-train-001-a3` v1, submitted
+04:13:07 UTC, pinned `2a31e5707ad533794363a7eb8a10cc2f1f8f0a94`, attaching
+latest audited selected train-001 a2; skip 1,030 exact keys, 2,170 missing.
+Actual startup/queues still need verification. Fresh quota: 26,121.97/108,000s
+used, reserved 0, refresh October 24 00:00 UTC; fresh draft OFF/capacity checks
+passed. CPU slot is free. Offline collection only; no training or tuning.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
