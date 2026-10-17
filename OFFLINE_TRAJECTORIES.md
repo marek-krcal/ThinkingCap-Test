@@ -190,6 +190,25 @@ weekly reset: used 0, reserved 0, allowed 108,000 seconds, next refresh
 October 24 00:00 UTC. This is a provider-reported reset, not a quota workaround.
 Fresh unrelated-draft OFF verification preceded dispatch. No training authorized.
 
+At **02:17 Prague**, selected train-001 a2 is COMPLETE and audited, sealing
+a normal deadline partial: 1,014 new answers, 380 correct, 342 capped,
+2,470,855 tokens. Cumulative shard coverage is 1,030/3,200 including its 16
+reused keys. Generation-only 2,560.68s, cold startup 133.88s, stage 2,694.56s.
+New answers by source (answers / correct / capped / tokens): GSM8K
+722 / 277 / 226 / 1,797,257; Skywork 185 / 22 / 116 / 610,712;
+CommonsenseQA 44 / 28 / 0 / 22,340; ARC Easy 63 / 53 / 0 / 40,546.
+These deadline partials remain completion-biased, not final source metrics.
+
+Revised coverage is **13,872 saved AND graded / 44,472**, zero awaiting grading:
+11,717 test + 2,155 selected training answers. Test-004 has actual generation
+on both T4s (93–94% utilization, queues 240 and 220/1,600 at 02:13).
+The freed slot now holds `thinkingcap-offline-subset-train-002-a2` v1,
+runner `9a22fd37d33c032bf1259fc0b1e6c0de6a63909e`, submitted 00:16:57 UTC.
+It attaches its audited bootstrap: skip 24 exact saved keys, generate only
+3,176 remaining / 1,588 per GPU. Actual startup still needs verification.
+Fresh draft OFF, capacity and quota checks passed: used 621.23 / 108,000s,
+reserved 0, refresh October 24 00:00 UTC. CPU slot is free. No actual training.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
