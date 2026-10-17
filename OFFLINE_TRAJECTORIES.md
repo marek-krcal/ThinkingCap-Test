@@ -389,6 +389,25 @@ still be checked. Fresh quota before launch: 18,645.51/108,000s used, reserved
 CPU slot is free. Next freed GPU can resume the audited selected-training
 partials, never old full-training shards. No optimization/training was run.
 
+At **05:19 Prague (03:19 UTC)**, validation-000 a1 is COMPLETE/audited with a
+normal deadline partial: 1,355 / 3,200 answers, all GSM8K, 585 correct, 324
+capped, 3,034,191 tokens. Generation-only 2,563.76s, startup 129.58s, stage
+2,693.34s. Its 1,845 missing keys remain eligible for exact-key resume from
+this audited parent; partial correctness is completion-biased. Revised scope
+is **29,221 saved AND graded / 44,472**, zero awaiting grading, no duplicate or
+seed errors. Test stays fully verified; validation and selected training are
+still incomplete.
+
+Validation-001 a1 has verified actual 1,600-request queues on each GPU,
+approximately 1,040 + 1,080 completed at 03:17 UTC, both T4s 90-92% busy.
+The freed slot now runs `thinkingcap-offline-subset-train-000-a4` v1, submitted
+03:18:58 UTC, pinned `f45398d11641c6c17c3d806fcf2a732cd7e86572`, attaching
+latest audited selected train-000 a3. It must skip its exact 1,101 saved keys
+and collect only the remaining 2,099; actual startup/queues need checking.
+Fresh quota: 19,857.23/108,000s used, reserved 0, refresh October 24 00:00 UTC;
+fresh draft OFF and global capacity checks passed. CPU slot is free. This is
+offline answer generation only, not training or tuning.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
