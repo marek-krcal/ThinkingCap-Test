@@ -677,6 +677,17 @@ by the shared capacity guard. A later pre-intent attempt requires fresh draft
 OFF/quota/capacity checks; an existing diagnostic intent must block any retry.
 Coverage stays 38,366 saved/graded, no training.
 
+After the full API cooldown, the reduced-read checks passed and the **single
+CPU-only startup diagnostic** was submitted at **06:46:37 UTC** as
+`krcalkrcal/thinkingcap-offline-startup-diagnostic` v1. Durable intent is saved
+in `runs/offline-startup-diagnostic/ledger.json`; source SHA-256
+`46bf912c4903ae656f22432c2e4e2d581f29244ccdc63858ce33adbc591febd0`.
+Fresh draft OFF, idle GPU/CPU sessions and parent metadata checks passed; quota
+35,748.165 / 108,000s used, reserved 0, refresh October 24 00:00 UTC. GPU is
+disabled, timeout 600s. No GPU retry may start until its small input/fetch report
+is inspected; this diagnostic is not evidence that the unknown stall is fixed.
+No generation/grading/training. Coverage remains 38,366 / 44,472 saved/graded.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
