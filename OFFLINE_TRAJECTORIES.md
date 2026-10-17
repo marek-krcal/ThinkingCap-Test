@@ -225,6 +225,29 @@ CPU slot is free. Fresh pre-launch quota: 2,828.51/108,000s used, reserved 0,
 next refresh October 24 00:00 UTC. Fresh unrelated draft OFF/capacity checks
 passed. No training, cap changes or duplicate regeneration were introduced.
 
+At **03:10 Prague**, selected train-002 a2 is COMPLETE/audited with 1,137
+new answers, 400 correct, 315 capped, 2,660,604 tokens; cumulative 1,161/3,200
+including 24 reused answers. Generation-only 2,561.96s, startup 132.52s,
+stage 2,694.47s. New per-source answers / correct / capped / tokens:
+GSM8K 837 / 334 / 194 / 1,911,791; Skywork 212 / 21 / 121 / 704,695;
+CommonsenseQA 48 / 13 / 0 / 26,901; ARC Easy 40 / 32 / 0 / 17,217.
+Partial-deadline selection remains biased and is not a final source score.
+
+Test-005 a1 sealed all 3,200 answers / 2,170,432 tokens, generation-only
+1,162.92s, startup 134.28s, stage 1,297.20s. Its CPU-only grader
+`thinkingcap-offline-grade-test-005-a1` v1 is RUNNING, so these answers are
+saved but not yet counted as graded. Revised scope: **21,409 saved / 18,209
+graded / 44,472 target**, 3,200 awaiting grading (3,292 selected train graded).
+
+Both free GPU slots were filled with new disjoint jobs, pinned
+`4b9cfaca145b0daa4bfe9a841274614b7dc31229`: `thinkingcap-offline-test-006-a1`
+v1 (359 IFEval prompts, 2,872 answers, submitted 01:06:27 UTC) and
+`thinkingcap-offline-subset-train-003-a2` v1 (400 selected prompts, 3,200 answers,
+zero bootstrap keys, submitted 01:08:11 UTC). Verify actual startup/queues next.
+Before the second launch quota was 5,786.43/108,000s used, reserved 0, next
+refresh October 24 00:00 UTC. Fresh draft OFF checks preceded each launch.
+Keep at most these two GPU jobs and one CPU grader; full coverage is not done.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
