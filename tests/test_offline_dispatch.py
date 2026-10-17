@@ -7,11 +7,25 @@ import unittest
 from unittest.mock import MagicMock
 
 from cloud.dispatch_offline import build_bundle, check_capacity, resume_parent
+from cloud.dispatch_offline_grade import build_launcher
 from cloud.refresh_offline import refresh
 from utils.offline import digest
 
 
 class DispatchTests(unittest.TestCase):
+    def test_cpu_launcher_logs_before_bounded_initial_fetch(self):
+        source = build_launcher('a'*40)
+        compile(source, '<cpu-launcher>', 'exec')
+        self.assertLess(source.index('CPU grading launcher starting'), source.index('subprocess.run'))
+        self.assertIn('timeout=90', source)
+        self.assertIn('a'*40, source)
+        self.assertNotIn('import torch', source)
+        self.assertNotIn('import vllm', source)
+
+    def test_cpu_launcher_rejects_unpinned_ref(self):
+        with self.assertRaises(ValueError):
+            build_launcher('main')
+
     def test_launcher_pins_private_input_full_commit_and_budget(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)/'submission'

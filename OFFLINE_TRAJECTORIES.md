@@ -248,6 +248,24 @@ Before the second launch quota was 5,786.43/108,000s used, reserved 0, next
 refresh October 24 00:00 UTC. Fresh draft OFF checks preceded each launch.
 Keep at most these two GPU jobs and one CPU grader; full coverage is not done.
 
+### Silent CPU grader recovery, October 17 around 03:28 Prague
+
+Test-005 CPU grader v1 exposed no logs or output after more than 21 minutes
+RUNNING (browser reported 1,298.8s and Output 0 B; bounded CLI logs were empty).
+Its exact session **359186126** was cancelled and **CANCEL_ACKNOWLEDGED verified**.
+The cause remains unknown: provider startup and an unlogged initial fetch are
+not distinguishable from this evidence. Both independent GPU collectors remain
+healthy and untouched. All 3,200 raw answers are safe in test-005 a1 output.
+
+The CPU dispatcher now logs immediately and fetches its pinned launcher in a
+90-second subprocess, bounding even DNS stalls once Python starts. Retry is
+still allowed only after an explicit terminal failed/cancelled status, preserves
+the previous grade attempt in ledger history, and keeps GPU disabled. Two new
+launcher regression checks bring the suite to **164 passing tests**. The repair
+improves observability/bounds; it does not establish the prior stall's cause.
+A single repaired CPU-only retry will grade the same saved answers; no model
+runtime or regeneration is involved. Do not blindly repeat if it also stalls.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.

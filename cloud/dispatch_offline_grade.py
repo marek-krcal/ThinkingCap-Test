@@ -9,6 +9,19 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def build_launcher(commit):
+    if not re.fullmatch(r'[0-9a-f]{40}', commit):
+        raise ValueError('Pin a full commit')
+    return ('import os, subprocess, sys\n'
+        'print("CPU grading launcher starting", flush=True)\n'
+        f'os.environ.update(THINKINGCAP_REF={commit!r},THINKINGCAP_TIMEOUT_SECONDS="3600")\n'
+        f'url="https://raw.githubusercontent.com/marek-krcal/ThinkingCap-Test/{commit}/cloud/kaggle-cpu-grade.py"\n'
+        'fetch="import sys,urllib.request; r=urllib.request.urlopen(sys.argv[1],timeout=60); sys.stdout.buffer.write(r.read())"\n'
+        'source=subprocess.run([sys.executable,"-c",fetch,url],check=True,stdout=subprocess.PIPE,timeout=90).stdout.decode("utf-8")\n'
+        'print("Pinned CPU launcher fetched; starting setup", flush=True)\n'
+        'exec(compile(source,url,"exec"),{"__name__":"__main__","__file__":url})\n')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commit', required=True)
@@ -37,6 +50,9 @@ def main():
                 prior = api.kernels_status(attempt['grade_kernel']).status.name
                 if not args.retry or prior not in ('ERROR','CANCEL_ACKNOWLEDGED'):
                     raise ValueError('Retry only an explicitly stopped, failed CPU grader')
+                attempt.setdefault('grade_history', []).append(dict(
+                    kernel=attempt['grade_kernel'], commit=attempt.get('grade_commit'),
+                    remote_status=prior, reason=attempt.get('grade_recovery_reason')))
             title = f"ThinkingCap offline grade {args.job} a{attempt['attempt']}"
             source = attempt['kernel']
         if api.kernels_status(source).status.name != 'COMPLETE':
@@ -49,12 +65,7 @@ def main():
         kernel = 'krcalkrcal/'+title.lower().replace(' ','-')
         folder = state/'cpu-submissions'/(kernel.split('/')[-1]+'-'+args.commit[:8])
         folder.mkdir(parents=True,exist_ok=False)
-        script = ('import os, urllib.request\n'
-            f'os.environ.update(THINKINGCAP_REF={args.commit!r},THINKINGCAP_TIMEOUT_SECONDS="3600")\n'
-            f'url="https://raw.githubusercontent.com/marek-krcal/ThinkingCap-Test/{args.commit}/cloud/kaggle-cpu-grade.py"\n'
-            'with urllib.request.urlopen(url, timeout=60) as response:\n'
-            '    source=response.read().decode("utf-8")\n'
-            'exec(compile(source,url,"exec"),{"__name__":"__main__","__file__":url})\n')
+        script = build_launcher(args.commit)
         (folder/'run.py').write_text(script)
         metadata = dict(id=kernel,title=title,code_file='run.py',language='python',kernel_type='script',
             is_private='true',enable_gpu='false',enable_internet='true',dataset_sources=[],
