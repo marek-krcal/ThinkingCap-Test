@@ -737,6 +737,35 @@ these two GPU collectors; CPU slot free. Both ledgers/report refreshed: **38,366
 saved AND graded / 44,472**, no pending grades/errors/duplicates, campaign not
 complete. Running outputs are excluded until sealed/audited. No training/tuning.
 
+At **09:39 Prague (07:39 UTC)**, train-004 a5 is COMPLETE and audited after its
+normal bounded collection deadline: **1,091 new answers**, 369 correct, 367
+capped, **2,638,895 tokens**. Its cumulative exact-key coverage is **2,332/3,200**
+(868 missing), preserving all 1,241 parent keys. Generation-only time was
+2,555.63s, engine startup 136.17s, collector stage 2,691.80s and launcher
+evaluation 2,704.87s. Source answers/correct/caps/tokens: GSM8K
+745/293/196/1,694,565; Skywork 250/9/171/899,539; CommonsenseQA
+52/23/0/29,417; ARC Easy 44/44/0/15,374. Raw SHA-256:
+`17dd6a131b508728d3518e2e71c675e1318384be65aa962700918cb21d00fb60`.
+This is successful notebook delivery, not proof of the old startup-stall cause.
+
+Authoritative scope is now **39,457 saved AND graded / 44,472**: test 22,072,
+validation 5,324, selected train 12,061. No awaiting grades/errors/duplicates;
+full campaign coverage is false. Train-000 a6 is actually generating normally
+(about 480/516 on its leading worker at 07:38; both T4s 95–96%), not a silent
+startup. Its running answers are not counted yet.
+
+The free slot resumes train-002 via `thinkingcap-offline-subset-train-002-a4`
+v1, submitted **07:39:23 UTC**, pinned
+`c8e5f72a15aecb5dd60048edbe05825022e4b254`, RUNNING accepted. Both
+`--minimal-resume-inputs --notebook-launcher` are enabled; latest audited a2
+parent attached, preserving **1,161 exact keys** and generating only **2,039
+missing keys** with unchanged seeds. Verify actual startup/queues; if silent
+past 15 minutes (about 07:54 UTC), inspect exact session before cancelling and
+verify ACK, without blind retry. Fresh browser draft OFF and quota/capacity
+checks passed: 41,087.701221/108,000s used, reserved 0, only train-000 a6 active
+before launch; refresh October 24 00:00 UTC. CPU slot free, max two GPU sessions.
+No training/tuning or recipe/data/grading changes.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
