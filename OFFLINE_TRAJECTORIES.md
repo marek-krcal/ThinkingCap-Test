@@ -667,6 +667,16 @@ This is not a repeat of the passed 400-answer verification or reconciliation.
 Full local suite: **168 tests passed**. Saved/graded scope remains **38,366 /
 44,472**; all completed outputs and frozen generation settings remain unchanged.
 
+The CPU diagnostic's pre-submission read checks hit Kaggle **HTTP 429** at
+approximately **06:35 UTC**, before any diagnostic intent or push was created.
+No diagnostic notebook is submitted, and no GPU job is active. Stop API calls
+for a ten-minute cooldown (until at least **06:46 UTC**); do not work around the
+provider limit. Its extra CPU-slot check was narrowed to known campaign CPU
+names, avoiding duplicate status reads for all GPU collectors already checked
+by the shared capacity guard. A later pre-intent attempt requires fresh draft
+OFF/quota/capacity checks; an existing diagnostic intent must block any retry.
+Coverage stays 38,366 saved/graded, no training.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.

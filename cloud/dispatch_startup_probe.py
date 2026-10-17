@@ -12,6 +12,12 @@ from cloud.dispatch_offline import check_capacity, verify_resume_cache
 from utils.offline import digest
 
 
+def is_campaign_cpu(ref):
+    return any(marker in ref for marker in (
+        '/thinkingcap-offline-grade-', '/thinkingcap-offline-cpu-verification',
+        '/thinkingcap-offline-subset-reconcile', '/thinkingcap-offline-startup-diagnostic'))
+
+
 def build_probe(folder):
     folder.mkdir(parents=True, exist_ok=False)
     source = (ROOT/'cloud/offline_startup_probe.py').read_text()
@@ -55,7 +61,9 @@ def main():
         while True:
             rows = api.kernels_list(mine=True, page=page, page_size=100) or []
             for row in rows:
-                if '/thinkingcap-offline-' in row.ref:
+                # GPU/unknown sessions were already checked by check_capacity;
+                # only known CPU exceptions need this additional slot check.
+                if is_campaign_cpu(row.ref):
                     if api.kernels_status(row.ref).status.name in ('RUNNING', 'QUEUED', 'CANCEL_REQUESTED'):
                         raise RuntimeError('Wait for active campaign CPU/session: '+row.ref)
             if len(rows) < 100:

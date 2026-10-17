@@ -8,12 +8,17 @@ from unittest.mock import MagicMock
 
 from cloud.dispatch_offline import build_bundle, check_capacity, resume_parent, verify_resume_cache
 from cloud.dispatch_offline_grade import build_launcher
-from cloud.dispatch_startup_probe import build_probe
+from cloud.dispatch_startup_probe import build_probe, is_campaign_cpu
 from cloud.refresh_offline import refresh
 from utils.offline import digest
 
 
 class DispatchTests(unittest.TestCase):
+    def test_probe_cpu_slot_does_not_repeat_gpu_status_checks(self):
+        self.assertTrue(is_campaign_cpu('krcalkrcal/thinkingcap-offline-grade-test-005-a2'))
+        self.assertTrue(is_campaign_cpu('krcalkrcal/thinkingcap-offline-startup-diagnostic'))
+        self.assertFalse(is_campaign_cpu('krcalkrcal/thinkingcap-offline-subset-train-004-a4'))
+
     def test_startup_probe_is_cpu_only_and_does_not_execute_fetched_launcher(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)/'probe'
