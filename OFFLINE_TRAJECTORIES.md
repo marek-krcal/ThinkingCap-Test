@@ -266,6 +266,27 @@ improves observability/bounds; it does not establish the prior stall's cause.
 A single repaired CPU-only retry will grade the same saved answers; no model
 runtime or regeneration is involved. Do not blindly repeat if it also stalls.
 
+At **03:39 Prague**, the single repaired test-005 CPU grader **v2 COMPLETE**
+and all 3,200 labels are audited: 2,316 correct, 77 capped, 2,170,432 tokens;
+GPU used false and model runtime imported false. No raw answer was regenerated.
+Successful retry does not establish why v1 never started. The launcher repair
+and 164 tests are published at `5889cdbefb5eddb1403c96314c3694d72b29b730`.
+
+Test-006 a1 also COMPLETE, sealing all 2,872 answers / 2,001,306 tokens;
+generation-only 1,304.45s, startup 130.13s, stage 1,434.58s. Its CPU grader
+`thinkingcap-offline-grade-test-006-a1` v1 is RUNNING. Revised coverage:
+**24,281 saved / 21,409 graded / 44,472**, 2,872 awaiting grading. The latest
+graded partitions are test 18,117 answers and selected train 3,292 answers.
+
+The freed GPU slot now holds `thinkingcap-offline-test-000-a4` v1, submitted
+01:36:15 UTC, pinned `5889cdbefb5eddb1403c96314c3694d72b29b730`. It attaches
+test-000 a3 and must skip exactly 2,117 saved keys, generating only the remaining
+1,083 (not a new seed cohort). Actual startup/resume skip still needs checking.
+Selected train-003 a2 continues with both T4s busy. Fresh draft OFF and capacity
+checks passed; quota before launch 8,923.51/108,000s used, reserved 0, refresh
+October 24 00:00 UTC. Test-000, selected-train tails and both validation shards
+remain unfinished. No training, recipe changes or duplicate collection.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
