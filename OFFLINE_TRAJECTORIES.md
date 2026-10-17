@@ -626,6 +626,27 @@ Fresh browser draft OFF and global capacity/quota checks passed: 35,560.70 /
 Verify actual startup/queues. If this reduced-input attempt also stalls, inspect
 the exact session and do not blindly repeat it. No training/tuning authorized.
 
+At **08:21 Prague (06:21 UTC)**, train-001 a4 is COMPLETE/audited **full
+3,200-answer coverage**. Its final 1,043 answers added 380 correct, 312 capped,
+2,466,328 tokens; generation-only 2,374.48s, engine startup 138.27s, collector
+stage 2,512.76s (launcher evaluation stage 2,526.75s). New per-source answers /
+correct / capped / tokens: GSM8K 672 / 268 / 154 / 1,527,329; Skywork 254 / 21 /
+158 / 885,463; CommonsenseQA 77 / 52 / 0 / 36,390; ARC Easy 40 / 39 / 0 / 17,146.
+Never regenerate train-001 or train-003. Both ledgers and revised-scope report
+refreshed: **38,366 saved AND graded / 44,472** = 22,072 test + 5,324 validation +
+10,970 selected train, zero awaiting grades/errors/duplicates; campaign coverage
+is not full. Remaining selected train: 000 has 1,032 missing, 002 has 2,039,
+004 has 1,959 (active recovery); validation has 1,076 missing.
+
+Train-004 a4 remains RUNNING with empty bounded CLI follow logs at approximately
+five minutes. It is the sole active collector; one GPU slot and the CPU slot are
+free. Observe this single reduced-input recovery before applying the same change
+to other stalled shards; do not multiply unverified identical recoveries. Its
+15-minute zero-output threshold is approximately 06:31 UTC; inspect the exact
+session/browser before any cancellation and verify acknowledgement. Actual
+startup/generation remains unverified. Cause is unknown, not proven fixed.
+No training/tuning or saved-answer regeneration.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
