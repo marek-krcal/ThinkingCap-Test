@@ -509,6 +509,23 @@ and queues. Fresh quota 30,067.28/108,000s used, reserved 0, refresh October 24
 Cancelled train-002 a3 remains stopped, its audited parent preserved; no blind
 identical retry. Full campaign is not complete. No training or tuning.
 
+At **07:19 Prague (05:19 UTC)**, selected train-004 a3 remained RUNNING with
+empty bounded CLI logs. Kaggle showed exact session **359235118**, 905.6s
+elapsed and output **0 B**, without launcher output. Cancelled only that exact
+session; **CANCEL_ACKNOWLEDGED verified**. Ledger state is `cancelled_startup`,
+verified zero output/new answers; all 1,241 audited parent answers preserved.
+Do not blindly retry the same startup. Cause is unknown, as for train-002 a3;
+the independently healthy train-003 a3 was not touched.
+
+Continued independent held-out work: `thinkingcap-offline-validation-000-a3`
+v1 submitted 05:18:58 UTC, pinned `9965abdae3fa82eda8313109b8ace6c4059615c7`,
+attaching latest audited validation-000 a2. It must skip 2,124 exact saved keys
+and collect only the 1,076 missing answers. Verify actual startup/queues.
+Fresh quota/capacity after cancellation: 31,040.27/108,000s used, reserved 0,
+only train-003 active; reset October 24 00:00 UTC. Fresh unrelated draft OFF
+verified. Scope stays **35,384 saved AND graded / 44,472**, no pending grades.
+No training/tuning or regeneration of saved answers was performed.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
