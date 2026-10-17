@@ -718,6 +718,25 @@ before applying notebook delivery to any other recovery. If also silent past
 verify stopped; do not blindly repeat. CPU diagnostic is complete/audited,
 not active, and must not be rerun. No training/tuning; scope unchanged.
 
+At **08:57 Prague (06:57 UTC)**, train-004 a5's notebook-mode recovery is
+actually generating on both T4s at **95–97% utilization**. Selected input/plan
+and latest train-004 a2 parent verified in the collector command; workers have
+980 + 979 requests (1,959 missing), preserving 1,241 saved exact keys. The
+notebook delivery has started successfully, but the old stall cause remains
+unknown; do not claim this proves the cause fixed. CLI notebook log chunks may
+repeat; repeated text is not evidence of multiple submitted sessions.
+
+The free slot resumes selected train-000's final **1,032 missing keys** with
+`thinkingcap-offline-subset-train-000-a6` v1, submitted **06:57:15 UTC**, pinned
+`6c57708f0951dd8500a27e07248e86788e837eaa`, using both optional minimal parent
+inputs and notebook delivery. Latest audited a4 parent attached; skip **2,168
+exact saved keys**, unchanged seeds. Verify actual startup/queues. Fresh browser
+draft OFF and quota/capacity checks passed: 36,224.99 / 108,000s used, reserved 0,
+only train-004 a5 active before launch; refresh October 24 00:00 UTC. At most
+these two GPU collectors; CPU slot free. Both ledgers/report refreshed: **38,366
+saved AND graded / 44,472**, no pending grades/errors/duplicates, campaign not
+complete. Running outputs are excluded until sealed/audited. No training/tuning.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
