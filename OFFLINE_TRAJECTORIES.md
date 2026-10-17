@@ -209,6 +209,22 @@ It attaches its audited bootstrap: skip 24 exact saved keys, generate only
 Fresh draft OFF, capacity and quota checks passed: used 621.23 / 108,000s,
 reserved 0, refresh October 24 00:00 UTC. CPU slot is free. No actual training.
 
+At **02:42 Prague**, test-004 a1 and its CPU-only grader are COMPLETE/audited:
+3,200 answers, 2,882 correct, 35 capped, 2,135,856 tokens. Generation-only
+1,199.80s, cold startup 133.94s, stage 1,333.74s. Revised coverage is
+**17,072 saved AND graded / 44,472**, none awaiting grading (14,917 test +
+2,155 selected training). Full coverage remains false; four test shards are
+complete, test-000 remains partial, and validation is still pending.
+
+`thinkingcap-offline-test-005-a1` v1 was submitted at 00:39:52 UTC, pinned
+`52239e68ced992f3f96abe1766453ef6599ea073`, replacing the completed test GPU
+session. Actual startup needs verification. Selected train-002 a2 is generating
+on both T4s (96–97% utilization); its command uses the selected input/plan and
+train-002 bootstrap, with 1,588 requests/GPU confirming 24 keys excluded.
+CPU slot is free. Fresh pre-launch quota: 2,828.51/108,000s used, reserved 0,
+next refresh October 24 00:00 UTC. Fresh unrelated draft OFF/capacity checks
+passed. No training, cap changes or duplicate regeneration were introduced.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
