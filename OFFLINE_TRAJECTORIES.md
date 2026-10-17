@@ -706,6 +706,18 @@ notebook-mode train-004 recovery, observe real startup/queues before further
 recoveries, and do not blindly repeat if it also stalls. CPU diagnostic must not
 be rerun; its durable completed/audited record is preserved.
 
+The **single controlled notebook-mode recovery** is submitted as
+`thinkingcap-offline-subset-train-004-a5` v1 at **06:48:53 UTC**, pinned
+`288b1580876a54787de15b1aebcb9b33da3917b0`, with `--minimal-resume-inputs
+--notebook-launcher`. Latest audited train-004 a2 parent is attached; skip
+1,241 exact keys and collect only 1,959 missing answers. Fresh draft OFF and
+capacity/quota checks passed: 35,748.165 / 108,000s used, reserved 0, no other
+active sessions, refresh October 24 00:00 UTC. Verify actual startup/queues
+before applying notebook delivery to any other recovery. If also silent past
+15 minutes (about 07:04 UTC), inspect exact session before cancelling and
+verify stopped; do not blindly repeat. CPU diagnostic is complete/audited,
+not active, and must not be rerun. No training/tuning; scope unchanged.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
