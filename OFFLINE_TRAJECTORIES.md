@@ -339,6 +339,25 @@ selected training totals 4,553. The 92 missing test keys may now safely resume
 from audited test-000 a4 when capacity frees. Both current GPU slots remain
 reserved for validation-000 a1 and selected train-004 a2. Full coverage is false.
 
+At **04:54 Prague**, selected train-004 a2 is COMPLETE/audited: 1,241 new
+answers, 499 correct, 331 capped, 2,759,376 tokens. Generation-only 2,554.55s,
+startup 139.17s, stage 2,693.71s. New per-source answers / correct / capped /
+tokens: GSM8K 905 / 338 / 235 / 2,137,246; Skywork 164 / 20 / 96 / 541,946;
+CommonsenseQA 76 / 46 / 0 / 39,227; ARC Easy 96 / 95 / 0 / 40,957.
+All five selected shards now have audited deadline partials, totaling 5,794 /
+16,000 answers, not full training-data coverage. Partial metrics remain biased.
+
+Revised scope is **27,774 saved AND graded / 44,472**, none awaiting grading.
+The freed slot resumes the final 92 missing test keys:
+`thinkingcap-offline-test-000-a5` v1, submitted 02:53:50 UTC, pinned
+`ffaf0fa53d86d52140560c40dd6ecf8f067e99f1`, attaches CPU-audited test-000 a4
+and must skip exactly 3,108 keys (46 requests/GPU). Verify actual startup next.
+Validation-000 a1 continues on both T4s; validation-001 remains unstarted.
+Fresh quota before launch: 17,318.99/108,000s used, reserved 0; refresh October
+24 00:00 UTC. Fresh draft OFF and capacity checks passed. CPU slot is free.
+After the test-tail GPU finishes, prioritize validation-001 or selected resumes;
+after test-tail CPU audit, verify the full 22,072-key test coverage separately.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
