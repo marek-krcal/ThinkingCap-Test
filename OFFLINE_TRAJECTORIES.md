@@ -766,6 +766,32 @@ checks passed: 41,087.701221/108,000s used, reserved 0, only train-000 a6 active
 before launch; refresh October 24 00:00 UTC. CPU slot free, max two GPU sessions.
 No training/tuning or recipe/data/grading changes.
 
+At **09:48 Prague (07:48 UTC)**, train-000 a6 is COMPLETE/audited after its normal
+deadline: **1,016 new answers**, 333 correct, 352 capped, **2,493,090 tokens**.
+Cumulative coverage is **3,184/3,200**, leaving 16 missing; all 2,168 parent keys
+are intact. Generation-only 2,549.26s, startup 141.86s, collector stage 2,691.12s,
+launcher evaluation 2,704.12s. Source answers/correct/caps/tokens: GSM8K
+747/267/250/1,836,778; Skywork 191/13/102/614,818; CommonsenseQA
+21/6/0/14,304; ARC Easy 57/47/0/27,190. Raw SHA-256:
+`1864aca2beb5fd4da66fabdec898203d300b2eeee5a7b8dfa97e0a3ef199578c`.
+Scope is **40,473 saved AND graded / 44,472**: test 22,072, validation 5,324,
+selected train 13,077 (4,714 correct, 3,947 capped, 30,678,112 tokens). No pending
+grades/errors/duplicates; full campaign coverage remains false.
+
+Train-002 a4 actual generation is verified (1,020 + 1,019 missing requests,
+correct selected input/plan and a2 parent; both T4s 95% at 07:44). It is not a
+silent startup. The free slot resumes **1,076 missing validation keys** via
+`thinkingcap-offline-validation-000-a4` v1, submitted **07:47:56 UTC**, pinned
+`e90ac18e76b18c061da8087428c2428b198b404b`, using both optional minimal inputs
+and notebook delivery with latest audited a2 parent (2,124 exact keys skipped).
+Fresh browser draft OFF and quota/capacity checks passed: 41,895.333802/108,000s
+used, reserved 0, only train-002 a4 active before launch; refresh October 24
+00:00 UTC. Verify actual validation startup/queues; if silent past 15 minutes
+(about 08:03 UTC), inspect exact session and verify cancellation ACK before any
+replacement. No blind retries. At most two GPU collectors; CPU slot free.
+Remaining other tails: selected train-000 16 and train-004 868 keys. Preserve
+latest COMPLETE/audited parents; no training/tuning or recipe changes.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
