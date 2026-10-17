@@ -296,6 +296,24 @@ a3 and routes exactly 542/541 remaining requests across the two GPUs, confirming
 the 2,117-key skip. Actual engine generation still needs a fresh check.
 Selected train-003 remains healthy on both T4s; CPU slot is free.
 
+At **04:00 Prague**, selected train-003 a2 is COMPLETE/audited, a normal
+deadline partial: **1,261** new answers, 469 correct, 353 capped, 2,925,627
+tokens. Generation-only 2,564.42s, startup 129.86s, stage 2,694.29s.
+Per-source answers / correct / capped / tokens: GSM8K 915 / 367 / 243 /
+2,189,694; Skywork 216 / 24 / 110 / 666,983; CommonsenseQA 48 / 17 / 0 /
+20,116; ARC Easy 82 / 61 / 0 / 48,834. These remain biased partial metrics.
+
+Revised coverage is **25,542 saved AND graded / 44,472**, none awaiting
+grading: 20,989 test + 4,553 selected training answers. The final fresh selected
+shard, `thinkingcap-offline-subset-train-004-a2` v1, was submitted at 01:59:47
+UTC, pinned `f240bddb5fbb88e953ff98caefd73eb9ad89cd93`, attaching its zero-key
+audited bootstrap. Verify actual startup/3,200-request queue next. Test-000 a4
+is still generating on both GPUs, with its exact 542/541 missing-key routing.
+Fresh quota before launch: 11,456.45/108,000s used, reserved 0; refresh October
+24 00:00 UTC. Fresh draft OFF/capacity checks passed. CPU slot is free.
+All five selected shards still have missing answers; validation is unstarted.
+The complete corpus remains pending and no training has been run.
+
 This branch separates **generation** from **grading**. It does not train an
 adapter. PR #1's eager evaluation baseline and other experiment branches remain
 unchanged. Collection uses the unadapted, pinned Qwen3-0.6B, not an overfit adapter.
